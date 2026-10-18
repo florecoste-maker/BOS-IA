@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { brand } from "@/lib/brand";
 
 const links = [
   { href: "/app", label: "Pilotage", exact: true },
   { href: "/app/formation", label: "Formation" },
   { href: "/app/finance", label: "Finance" },
   { href: "/app/agents", label: "Digital Nexus" },
+  { href: "/app/integrations", label: "Connexions" },
 ];
 
 export function AppNav() {
@@ -20,7 +22,10 @@ export function AppNav() {
           href="/"
           className="font-display text-lg font-semibold tracking-tight text-brand-deep"
         >
-          BOS-IA
+          {brand.agency}
+          <span className="ml-2 text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">
+            {brand.product}
+          </span>
         </Link>
         <nav className="flex flex-wrap items-center gap-1 text-sm font-medium text-ink-muted">
           {links.map((link) => {

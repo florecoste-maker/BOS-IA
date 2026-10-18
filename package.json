@@ -2,6 +2,7 @@
   "name": "bos-ia",
   "version": "0.1.0",
   "private": true,
+  "description": "BOS-IA — assistant opérationnel Jamaliance (Hostinger + TidyCal)",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Sans, Sora } from "next/font/google";
+import { brand } from "@/lib/brand";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -15,9 +16,8 @@ const sora = Sora({
 });
 
 export const metadata: Metadata = {
-  title: "BOS-IA — Système d'exploitation cognitif pour PME",
-  description:
-    "Plateforme unifiée LMS Audit-Ready + ERP OPCO-Ready + Digital Nexus. Formation, facturation et agents IA souverains.",
+  title: `${brand.agency} — ${brand.product}`,
+  description: brand.description,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

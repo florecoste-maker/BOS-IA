@@ -1,19 +1,31 @@
 import Link from "next/link";
+import { brand, jamalianceServices } from "@/lib/brand";
+import { getTidyCalPublicConfig } from "@/lib/integrations/config";
 
 export default function HomePage() {
+  const { bookingUrl } = getTidyCalPublicConfig();
+
   return (
     <div className="min-h-screen">
       <header className="absolute inset-x-0 top-0 z-20">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5 md:px-6">
           <span className="font-display text-xl font-semibold tracking-tight text-white">
-            BOS-IA
+            {brand.agency}
           </span>
-          <Link
-            href="/app"
-            className="text-sm font-semibold text-white/90 transition hover:text-white"
-          >
-            Ouvrir la plateforme
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/rendez-vous"
+              className="hidden text-sm font-semibold text-white/90 transition hover:text-white sm:inline"
+            >
+              Prendre rendez-vous
+            </Link>
+            <Link
+              href="/app"
+              className="text-sm font-semibold text-white/90 transition hover:text-white"
+            >
+              Ouvrir BOS-IA
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -25,28 +37,29 @@ export default function HomePage() {
         <div className="relative z-10 mx-auto grid min-h-[100svh] max-w-6xl items-end gap-10 px-4 pb-16 pt-28 md:grid-cols-[1.05fr_0.95fr] md:items-center md:px-6 md:pb-20">
           <div className="animate-rise">
             <p className="font-display text-5xl font-semibold leading-[0.95] tracking-tight md:text-7xl">
-              BOS-IA
+              {brand.agency}
             </p>
             <h1 className="mt-5 max-w-xl text-2xl font-medium leading-snug text-white/90 md:text-3xl">
-              Le système d&apos;exploitation cognitif pour PME.
+              {brand.tagline}
             </h1>
             <p className="mt-4 max-w-lg text-base leading-relaxed text-white/70 md:text-lg">
-              Une plateforme unifiée qui orchestre formation Qualiopi, dossiers
-              OPCO et facturation via un écosystème multi-agents souverain.
+              BOS-IA est l&apos;assistant opérationnel de l&apos;agence : site,
+              téléphone, rendez-vous et e-mails — avec validation humaine là où
+              vous devez rester aux commandes.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href="/app"
+                href="/rendez-vous"
                 className="inline-flex items-center justify-center bg-white px-5 py-3 text-sm font-semibold text-[#062821] transition hover:bg-[#e8f4f0]"
+              >
+                Réserver un échange
+              </Link>
+              <Link
+                href="/app"
+                className="inline-flex items-center justify-center border border-white/30 px-5 py-3 text-sm font-semibold text-white transition hover:border-white/60"
               >
                 Accéder au cockpit
               </Link>
-              <a
-                href="#architecture"
-                className="inline-flex items-center justify-center border border-white/30 px-5 py-3 text-sm font-semibold text-white transition hover:border-white/60"
-              >
-                Voir l&apos;architecture
-              </a>
             </div>
           </div>
 
@@ -56,40 +69,29 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="architecture" className="mx-auto max-w-6xl px-4 py-20 md:px-6 md:py-28">
+      <section id="services" className="mx-auto max-w-6xl px-4 py-20 md:px-6 md:py-28">
         <div className="animate-rise-late max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">
-            Architecture découplée
+            Quatre agents IA
           </p>
           <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-ink md:text-4xl">
-            System of Record + System of Engagement
+            Alléger le quotidien, sans perdre le contrôle
           </h2>
           <p className="mt-4 text-base leading-relaxed text-ink-muted">
-            Le cœur métier isole vos données en Europe. L&apos;interface
-            intelligente expose formation, finance et agents avec supervision
-            humaine là où l&apos;AI Act l&apos;exige.
+            Chaque service s&apos;intègre à votre façon de travailler et soulage
+            votre équipe des tâches répétitives.
           </p>
         </div>
 
         <div className="mt-12 grid gap-10 md:grid-cols-2">
-          <article>
-            <h3 className="font-display text-xl font-semibold text-ink">
-              System of Record
-            </h3>
-            <p className="mt-3 text-ink-muted leading-relaxed">
-              Facturation, clients, formations et preuves Qualiopi dans un
-              espace tenant isolé, chiffré, hébergé à Paris.
-            </p>
-          </article>
-          <article>
-            <h3 className="font-display text-xl font-semibold text-ink">
-              System of Engagement
-            </h3>
-            <p className="mt-3 text-ink-muted leading-relaxed">
-              Cockpit adaptatif, assistants Gemini et workflows Proof-to-Cash
-              du completion_record jusqu&apos;au recouvrement.
-            </p>
-          </article>
+          {jamalianceServices.map((service) => (
+            <article key={service.id}>
+              <h3 className="font-display text-xl font-semibold text-ink">
+                {service.title}
+              </h3>
+              <p className="mt-3 leading-relaxed text-ink-muted">{service.text}</p>
+            </article>
+          ))}
         </div>
       </section>
 
@@ -97,64 +99,89 @@ export default function HomePage() {
         <div className="mx-auto grid max-w-6xl gap-12 px-4 py-20 md:grid-cols-2 md:px-6 md:py-24">
           <article>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">
-              Pilier 1
+              Assistant BOS-IA
             </p>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight">
-              LMS Audit-Ready
+              Un cockpit pour piloter l&apos;agence
             </h2>
             <p className="mt-4 leading-relaxed text-ink-muted">
-              Pipeline cognitif du lead à la certification, compréhension
-              validée par quiz, détection anti ghost learner et preuves
-              Qualiopi traçables.
+              Formation, finance et supervision multi-agents restent dans BOS-IA.
+              Les rendez-vous clients passent par TidyCal ; le site public vit sur
+              Hostinger.
             </p>
           </article>
           <article>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">
-              Pilier 2
+              Connexions
             </p>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight">
-              ERP OPCO-Ready
+              Hostinger + TidyCal
             </h2>
             <p className="mt-4 leading-relaxed text-ink-muted">
-              Dossiers de financement industrialisés, acomptes 30/70,
-              abonnements MRR et recouvrement assisté sous contrôle HITL.
+              Le code est prêt pour un déploiement Node.js Hostinger et un
+              calendrier TidyCal embarqué. Il reste à brancher vos clés et votre
+              domaine.
             </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/app/integrations"
+                className="inline-flex text-sm font-semibold text-brand hover:text-brand-deep"
+              >
+                Voir l&apos;état des connexions →
+              </Link>
+              {bookingUrl ? (
+                <a
+                  href={bookingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex text-sm font-semibold text-accent hover:opacity-80"
+                >
+                  Ouvrir TidyCal →
+                </a>
+              ) : null}
+            </div>
           </article>
         </div>
       </section>
 
       <section className="mx-auto max-w-6xl px-4 py-20 md:px-6 md:py-28">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-nexus">
-          Digital Nexus
+          Vous restez aux commandes
         </p>
         <h2 className="mt-3 max-w-2xl font-display text-3xl font-semibold tracking-tight md:text-4xl">
-          Système multi-agents hiérarchisé sur Vertex AI
+          Simple, chaleureux, et toujours à votre écoute
         </h2>
         <p className="mt-4 max-w-2xl leading-relaxed text-ink-muted">
-          QAA pour la vérité des données, IPOA pour l&apos;optimisation
-          proactive, FCA/MDGA pour les actions déléguées avec validation
-          humaine obligatoire sur les processus à haut risque.
+          Pas de jargon ni de promesses miraculeuses. Nous avançons étape par
+          étape, au rythme de votre entreprise.
         </p>
         <div className="mt-10 flex flex-wrap gap-3">
           <Link
-            href="/app/agents"
+            href="/rendez-vous"
             className="inline-flex bg-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-deep"
           >
-            Superviser les agents
+            Réserver un échange
           </Link>
-          <Link
-            href="/app/formation"
+          <a
+            href={`mailto:${brand.email}`}
             className="inline-flex border border-line bg-surface px-5 py-3 text-sm font-semibold text-ink transition hover:border-brand/40"
           >
-            Pipeline formation
-          </Link>
+            {brand.email}
+          </a>
         </div>
       </section>
 
       <footer className="border-t border-line px-4 py-8 text-sm text-ink-muted md:px-6">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <span className="font-display font-semibold text-ink">BOS-IA</span>
-          <span>RGPD · Qualiopi · AI Act · Hébergement Europe</span>
+          <span className="font-display font-semibold text-ink">
+            {brand.agency} · {brand.product}
+          </span>
+          <span>
+            <a href={brand.siteUrl} className="hover:text-ink">
+              jamaliance.com
+            </a>
+            {" · "}Hostinger · TidyCal
+          </span>
         </div>
       </footer>
     </div>
@@ -171,8 +198,8 @@ function HeroVisual() {
         </linearGradient>
       </defs>
       <rect x="40" y="40" width="440" height="380" rx="8" fill="url(#panel)" />
-      <rect x="64" y="72" width="180" height="18" rx="4" fill="#e8f4f0" opacity="0.9" />
-      <rect x="64" y="104" width="120" height="10" rx="3" fill="#9ecfc3" opacity="0.7" />
+      <rect x="64" y="72" width="220" height="18" rx="4" fill="#e8f4f0" opacity="0.9" />
+      <rect x="64" y="104" width="140" height="10" rx="3" fill="#9ecfc3" opacity="0.7" />
       <rect x="64" y="150" width="170" height="90" rx="6" fill="#05241f" opacity="0.45" />
       <rect x="250" y="150" width="200" height="90" rx="6" fill="#05241f" opacity="0.45" />
       <rect x="64" y="260" width="386" height="120" rx="6" fill="#05241f" opacity="0.35" />
@@ -186,16 +213,16 @@ function HeroVisual() {
         className="flow-line"
       />
       <text x="78" y="178" fill="#d7ebe4" fontSize="12" fontFamily="Sora,sans-serif">
-        SoR
+        Site
       </text>
       <text x="264" y="178" fill="#d7ebe4" fontSize="12" fontFamily="Sora,sans-serif">
-        SoE
+        RDV
       </text>
       <text x="78" y="292" fill="#d7ebe4" fontSize="13" fontFamily="Sora,sans-serif">
-        Proof-to-Cash · Digital Nexus
+        BOS-IA · Jamaliance
       </text>
       <text x="78" y="318" fill="#9ecfc3" fontSize="11" fontFamily="DM Sans,sans-serif">
-        Formation validée → OPCO → Facture → Paiement
+        Téléphone → E-mails → TidyCal → Validation
       </text>
     </svg>
   );

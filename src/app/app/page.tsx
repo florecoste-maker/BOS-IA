@@ -15,9 +15,9 @@ export default function DashboardPage() {
   return (
     <>
       <SectionTitle
-        eyebrow="Cockpit"
+        eyebrow="Cockpit Jamaliance"
         title="Pilotage BOS-IA"
-        description="Vue unifiée des deux piliers et du Digital Nexus. Objectif : cycle administratif sous 30 jours, conformité Qualiopi et AI Act by design."
+        description="Assistant opérationnel de l'agence : formation, finance, agents IA et connexions Hostinger / TidyCal. Vous validez les actions à risque."
       />
 
       <section className="grid gap-6 border-y border-line bg-surface/60 py-6 md:grid-cols-4 md:gap-0">
@@ -98,7 +98,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="mt-14 grid gap-6 border-t border-line pt-10 md:grid-cols-3">
+      <section className="mt-14 grid gap-6 border-t border-line pt-10 md:grid-cols-2 lg:grid-cols-4">
         <ModuleLink
           href="/app/formation"
           title="Pilier 1 — LMS"
@@ -113,6 +113,11 @@ export default function DashboardPage() {
           href="/app/agents"
           title="Digital Nexus"
           text="Agents QAA, IPOA et MDGA avec niveaux d'autonomie."
+        />
+        <ModuleLink
+          href="/app/integrations"
+          title="Hostinger · TidyCal"
+          text="État des connexions site et prise de rendez-vous."
         />
       </section>
     </>
