@@ -17,7 +17,7 @@ export default function DashboardPage() {
       <SectionTitle
         eyebrow="Cockpit Jamaliance"
         title="Pilotage BOS-IA"
-        description="Assistant opérationnel de l'agence : formation, finance, agents IA et connexions Hostinger / TidyCal. Vous validez les actions à risque."
+        description="Moteur opérationnel de l'agence (bos.jamaliance.com) : formation, finance, agents IA et connexions. La vitrine reste sur jamaliance.com. Vous validez les actions à risque."
       />
 
       <section className="grid gap-6 border-y border-line bg-surface/60 py-6 md:grid-cols-4 md:gap-0">

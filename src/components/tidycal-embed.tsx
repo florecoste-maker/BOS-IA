@@ -15,16 +15,22 @@ export function TidyCalEmbed({
       <div className="border border-dashed border-line bg-surface/70 px-5 py-8">
         <p className="font-display text-lg font-semibold text-ink">{title}</p>
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-muted">
-          La prise de rendez-vous TidyCal n&apos;est pas encore branchée. Ajoutez{" "}
-          <code className="text-brand-deep">NEXT_PUBLIC_TIDYCAL_URL</code> (lien
-          public Jamaliance) dans les variables d&apos;environnement Hostinger,
-          puis redéployez.
+          Aperçu calendrier non configuré ici. Les clients réservent déjà sur{" "}
+          <a
+            href={brand.reservationUrl}
+            className="font-semibold text-brand hover:text-brand-deep"
+          >
+            jamaliance.com/reservation
+          </a>
+          . Pour l&apos;embed dans le cockpit, ajoutez{" "}
+          <code className="text-brand-deep">NEXT_PUBLIC_TIDYCAL_URL</code> dans
+          hPanel.
         </p>
         <a
-          href={`mailto:${brand.email}`}
+          href={brand.reservationUrl}
           className="mt-5 inline-flex text-sm font-semibold text-brand hover:text-brand-deep"
         >
-          Contacter {brand.agency} →
+          Ouvrir la réservation publique →
         </a>
       </div>
     );

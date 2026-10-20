@@ -113,14 +113,16 @@ export function getIntegrationsOverview() {
       siteUrl: hostinger.siteUrl,
       appUrl: hostinger.appUrl,
       deployReady: true,
+      targetSubdomain: "bos.jamaliance.com",
       needsFromUser: [
         !hostinger.siteUrl
-          ? "URL du site Hostinger (NEXT_PUBLIC_JAMALIANCE_SITE_URL), ex. https://jamaliance.com"
+          ? "URL du site public Horizons (NEXT_PUBLIC_JAMALIANCE_SITE_URL), ex. https://jamaliance.com"
           : null,
         !hostinger.appUrl
-          ? "URL de déploiement BOS-IA (NEXT_PUBLIC_APP_URL) une fois l'app Node.js créée sur Hostinger"
+          ? "URL du moteur BOS-IA (NEXT_PUBLIC_APP_URL), prévu : https://bos.jamaliance.com"
           : null,
-        "Connexion GitHub → Hostinger (Web App Node.js) et variables d'environnement dans hPanel",
+        "Web App Node.js Hostinger sur le sous-domaine bos.jamaliance.com (sans toucher à la vitrine Horizons)",
+        "Variables d'environnement dans hPanel (voir .env.example)",
       ].filter(Boolean) as string[],
     },
   };

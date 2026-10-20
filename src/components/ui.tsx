@@ -19,7 +19,7 @@ export function AppNav() {
     <header className="sticky top-0 z-40 border-b border-line/80 bg-surface/85 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
         <Link
-          href="/"
+          href="/app"
           className="font-display text-lg font-semibold tracking-tight text-brand-deep"
         >
           {brand.agency}
@@ -46,6 +46,14 @@ export function AppNav() {
               </Link>
             );
           })}
+          <a
+            href={brand.siteUrl}
+            className="rounded-md px-3 py-1.5 transition-colors hover:bg-bg-deep hover:text-ink"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Site public
+          </a>
         </nav>
       </div>
     </header>

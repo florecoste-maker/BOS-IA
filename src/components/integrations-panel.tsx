@@ -22,6 +22,7 @@ type Overview = {
     status: "configured" | "partial" | "missing";
     siteUrl: string | null;
     appUrl: string | null;
+    targetSubdomain?: string;
     needsFromUser: string[];
   };
 };
@@ -103,8 +104,12 @@ export function IntegrationsPanel() {
           />
         </div>
         <ul className="mt-3 space-y-1 text-sm text-ink-muted">
-          <li>Site agence : {data.hostinger.siteUrl ?? "non défini"}</li>
-          <li>App BOS-IA : {data.hostinger.appUrl ?? "non défini"}</li>
+          <li>Vitrine Horizons : {data.hostinger.siteUrl ?? "non défini"}</li>
+          <li>Moteur BOS-IA : {data.hostinger.appUrl ?? "non défini"}</li>
+          <li>
+            Sous-domaine cible :{" "}
+            {data.hostinger.targetSubdomain ?? "bos.jamaliance.com"}
+          </li>
           <li>Build Next.js : prêt (mode serveur / standalone)</li>
         </ul>
         {data.hostinger.needsFromUser.length > 0 ? (

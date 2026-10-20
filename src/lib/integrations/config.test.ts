@@ -64,4 +64,12 @@ describe("Jamaliance integrations config", () => {
       "https://jamaliance.com",
     );
   });
+
+  it("cible le sous-domaine bos.jamaliance.com pour le moteur", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://bos.jamaliance.com";
+    const overview = getIntegrationsOverview();
+    assert.equal(overview.hostinger.appUrl, "https://bos.jamaliance.com");
+    assert.equal(overview.hostinger.targetSubdomain, "bos.jamaliance.com");
+    assert.equal(overview.hostinger.status, "partial");
+  });
 });

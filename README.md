@@ -1,29 +1,35 @@
 # Jamaliance · BOS-IA
 
-Assistant opérationnel de l'agence **Jamaliance** — cockpit BOS-IA (formation, finance, agents IA) connecté au site **Hostinger** et à la prise de rendez-vous **TidyCal**.
+**BOS-IA** est le moteur opérationnel de l'agence **Jamaliance** — pas un second site vitrine.
 
-Site public agence : [jamaliance.com](https://jamaliance.com)
+| Couche | URL | Hébergement |
+|--------|-----|-------------|
+| Vitrine publique | [jamaliance.com](https://jamaliance.com) | Hostinger Horizons (**ne pas remplacer**) |
+| Moteur BOS-IA | [bos.jamaliance.com](https://bos.jamaliance.com) | Hostinger Web App Node.js (à déployer) |
+| Rendez-vous clients | [jamaliance.com/reservation](https://jamaliance.com/reservation) | Horizons + TidyCal (déjà en ligne) |
 
 ## Ce qui existe déjà
 
 | Élément | État |
 |--------|------|
 | App Next.js BOS-IA (LMS, ERP OPCO, Digital Nexus HITL) | ✅ Présent |
-| Branding **Jamaliance** (landing, nav, metadata) | ✅ Préparé dans ce dépôt |
-| Page `/rendez-vous` + embed TidyCal | ✅ Prêt (nécessite URL publique) |
-| API TidyCal (`/api/integrations/tidycal`) | ✅ Prêt (nécessite jeton API) |
+| Entrée moteur `/` (pas de landing marketing) | ✅ Préparé |
+| Redirection `/rendez-vous` → site public | ✅ Préparé |
+| Cockpit `/app/*` | ✅ Présent |
+| API TidyCal (`/api/integrations/tidycal`) | ✅ Prêt (jeton API optionnel pour l'embed) |
 | Statut connexions (`/app/integrations`) | ✅ Prêt |
-| Déploiement Hostinger Node.js | ⚙️ Config code prête — déploiement manuel |
+| Config Hostinger `standalone` + `.env.example` | ✅ Prêt |
+| Déploiement sur `bos.jamaliance.com` | ⏳ Manuel — après confirmation |
 
 ## Démarrage local
 
 ```bash
-cp .env.example .env.local   # puis renseigner vos valeurs
+cp .env.example .env.local   # valeurs d'exemple déjà alignées Jamaliance
 npm install
 npm run dev
 ```
 
-Ouvrir [http://localhost:3000](http://localhost:3000).
+Ouvrir [http://localhost:3000](http://localhost:3000) → entrée moteur → `/app`.
 
 ```bash
 npm run build
@@ -35,42 +41,26 @@ npm run lint
 
 | Route | Rôle |
 |-------|------|
-| `/` | Landing Jamaliance |
-| `/rendez-vous` | Calendrier TidyCal (embed) |
+| `/` | Entrée moteur (lien vitrine + cockpit) |
+| `/rendez-vous` | Redirige vers jamaliance.com/reservation |
 | `/app` | Cockpit BOS-IA |
 | `/app/formation` | Pipeline formation |
 | `/app/finance` | Dossiers OPCO & factures |
 | `/app/agents` | Supervision multi-agents + HITL |
-| `/app/integrations` | État Hostinger / TidyCal |
+| `/app/integrations` | État Hostinger / TidyCal (+ aperçu calendrier) |
 
-## Automatique vs votre intervention
+## Déploiement Hostinger (bos.jamaliance.com)
 
-### Fait automatiquement dans le code
+**Prérequis plan :** Business ou Cloud avec *Web Apps Node.js*.
 
-- Renommage / positionnement **Jamaliance** + produit **BOS-IA**
-- Page rendez-vous et panneau de statut des connexions
-- Client + routes API TidyCal (liste RDV, types, créneaux, création)
-- `output: "standalone"` pour Hostinger / VPS
-- `.env.example` documentant toutes les variables
+1. hPanel → **Sites web** → **Créer un site** → **Web App / Node.js**
+2. Importer le dépôt GitHub `BOS-IA` (branche fusionnée)
+3. Preset `next`, build `npm run build`, output `.next`, Node 20 ou 22
+4. Domaine / sous-domaine : **bos.jamaliance.com** (laisser jamaliance.com sur Horizons)
+5. Coller les variables de `.env.example` (dont `NEXT_PUBLIC_APP_URL=https://bos.jamaliance.com`)
+6. Optionnel : `TIDYCAL_API_TOKEN` pour l'API (l'embed public vit déjà sur le site Horizons)
 
-### Nécessite votre intervention
-
-1. **TidyCal**
-   - Compte + plan permettant l'API (Individual / Pro / Agency)
-   - Lien public de booking → `NEXT_PUBLIC_TIDYCAL_URL`
-   - Personal token → `TIDYCAL_API_TOKEN` ([créer ici](https://tidycal.com/integrations/advanced))
-   - ID du type de RDV → `TIDYCAL_BOOKING_TYPE_ID` (optionnel pour l'embed seul)
-
-2. **Hostinger**
-   - Plan **Business** ou **Cloud** avec Web Apps Node.js (ou VPS)
-   - Dans hPanel : *Websites → Add Website → Node.js* → importer ce dépôt GitHub
-   - Préset `next`, build `npm run build`, output `.next`, Node 20/22
-   - Coller les variables d'environnement (voir `.env.example`)
-   - Pointer le domaine / sous-domaine (ex. app.jamaliance.com) vers l'app
-   - Le site vitrine [jamaliance.com](https://jamaliance.com) peut rester tel quel ; BOS-IA se déploie en complément
-
-3. **Secrets**
-   - Ne jamais committer `.env.local` ni le jeton TidyCal
+Ne jamais pointer ce dépôt sur la racine jamaliance.com.
 
 ## API intégrations
 

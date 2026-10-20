@@ -10,7 +10,7 @@ export default function IntegrationsPage() {
       <SectionTitle
         eyebrow="Connexions"
         title="Hostinger & TidyCal"
-        description="État des branchements pour Jamaliance. Le code est prêt ; les secrets et le déploiement restent à fournir dans hPanel / TidyCal."
+        description="Vitrine = jamaliance.com (Horizons, intacte). Moteur = bos.jamaliance.com (Web App Node.js). Les secrets se renseignent dans hPanel / TidyCal."
       />
 
       <section className="border-y border-line bg-surface/60 py-8">
