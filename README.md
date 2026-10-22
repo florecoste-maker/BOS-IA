@@ -32,7 +32,8 @@ npm run dev
 Ouvrir [http://localhost:3000](http://localhost:3000) → entrée moteur → `/app`.
 
 ```bash
-npm run build
+npm run build   # + copie des assets standalone
+npm start       # serveur de production
 npm test
 npm run lint
 ```
@@ -53,12 +54,33 @@ npm run lint
 
 **Prérequis plan :** Business ou Cloud avec *Web Apps Node.js*.
 
-1. hPanel → **Sites web** → **Créer un site** → **Web App / Node.js**
-2. Importer le dépôt GitHub `BOS-IA` (branche fusionnée)
-3. Preset `next`, build `npm run build`, output `.next`, Node 20 ou 22
-4. Domaine / sous-domaine : **bos.jamaliance.com** (laisser jamaliance.com sur Horizons)
-5. Coller les variables de `.env.example` (dont `NEXT_PUBLIC_APP_URL=https://bos.jamaliance.com`)
+1. hPanel → **Sites web** → **Ajouter un site** → **Web App Node.js**
+2. Source : **GitHub** → dépôt `florecoste-maker/BOS-IA`, branche `main`
+3. Réglages de build :
+
+   | Champ | Valeur |
+   |-------|--------|
+   | Framework | Next.js |
+   | Version Node | 22 (minimum 20.9) |
+   | Commande d'installation | `npm ci` |
+   | Commande de build | `npm run build` |
+   | Commande de démarrage | `npm start` |
+   | Dossier de sortie | `.next` |
+
+4. Domaine : **bos.jamaliance.com** (sous-domaine ; jamaliance.com reste sur Horizons)
+5. Variables d'environnement : copier celles de `.env.example`, avec
+   `NEXT_PUBLIC_APP_URL=https://bos.jamaliance.com`.
+   Les variables `NEXT_PUBLIC_*` sont figées **au build** : après les avoir
+   modifiées, relancer un déploiement.
 6. Optionnel : `TIDYCAL_API_TOKEN` pour l'API (l'embed public vit déjà sur le site Horizons)
+7. Vérifier : `https://bos.jamaliance.com/api/integrations/status` répond en JSON.
+
+`npm run build` exécute ensuite `scripts/prepare-standalone.mjs`, qui copie
+`public/` et `.next/static/` dans `.next/standalone/` ; `npm start` lance
+`node .next/standalone/server.js` (port lu dans `PORT`).
+
+**Limite actuelle :** les données (sessions, OPCO, agents) sont des données de
+démonstration en mémoire, réinitialisées à chaque redémarrage.
 
 Ne jamais pointer ce dépôt sur la racine jamaliance.com.
 
