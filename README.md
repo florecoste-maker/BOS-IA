@@ -71,6 +71,13 @@ npm run lint
    | Fichier d'entrée (si demandé) | `server.js` |
    | Dossier de sortie | `.next` |
 
+   Le serveur de build Hostinger a une glibc trop ancienne pour le binaire
+   natif SWC de Next 16 (`GLIBC_2.29 not found`). D'où :
+   - `next.config.mjs` (pas de `.ts` : la config se lit sans SWC) ;
+   - `npm run build` = `next build --webpack` (Turbopack n'existe qu'en natif) ;
+   - `@next/swc-wasm-nodejs` installé : Next bascule automatiquement sur SWC
+     WebAssembly quand le binaire natif ne se charge pas.
+
    Les outils nécessaires au build (TypeScript, Tailwind) sont dans
    `dependencies` : le build fonctionne même si Hostinger installe en mode
    production (`NODE_ENV=production`).
