@@ -68,7 +68,12 @@ npm run lint
    | Commande d'installation | `npm ci` |
    | Commande de build | `npm run build` |
    | Commande de démarrage | `npm start` |
+   | Fichier d'entrée (si demandé) | `server.js` |
    | Dossier de sortie | `.next` |
+
+   Les outils nécessaires au build (TypeScript, Tailwind) sont dans
+   `dependencies` : le build fonctionne même si Hostinger installe en mode
+   production (`NODE_ENV=production`).
 
 4. Domaine : **bos.jamaliance.com** (sous-domaine ; jamaliance.com reste sur Horizons)
 5. Variables d'environnement : copier celles de `.env.example`, avec
@@ -85,7 +90,8 @@ npm run lint
 
 `npm run build` exécute ensuite `scripts/prepare-standalone.mjs`, qui copie
 `public/` et `.next/static/` dans `.next/standalone/` ; `npm start` lance
-`node .next/standalone/server.js` (port lu dans `PORT`).
+`node server.js`, qui démarre `.next/standalone/server.js` sur `0.0.0.0` (port lu
+dans `PORT`). L'écoute ne dépend donc pas de la variable système `HOSTNAME`.
 
 **Limite actuelle :** les données (sessions, OPCO, agents, propositions des agents)
 sont des données de démonstration en mémoire, réinitialisées à chaque redémarrage.
