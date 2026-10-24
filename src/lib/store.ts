@@ -411,6 +411,33 @@ export const store = {
     return { ...action };
   },
 
+  /** Enregistre une analyse d'agent IA ; les actions sensibles vont en file HITL. */
+  recordAgentRun(
+    agentId: string,
+    proposal: {
+      resume: string;
+      actions: Array<{ type: string; description: string; requiresHitl: boolean }>;
+    },
+    model: string,
+  ) {
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent) return null;
+    const timestamp = new Date().toISOString();
+    const created: AgentAction[] = proposal.actions.map((a, i) => ({
+      id: `act-${Date.now()}-${i}`,
+      agentId,
+      type: a.type,
+      description: a.description,
+      timestamp,
+      requiresHitl: a.requiresHitl,
+      hitlStatus: a.requiresHitl ? "pending" : undefined,
+    }));
+    agentActions.unshift(...created);
+    agent.derniereAction = proposal.resume;
+    if (created.some((a) => a.requiresHitl)) agent.status = "en_attente_hitl";
+    return { agentId, model, resume: proposal.resume, actions: created };
+  },
+
   emitProofToCash(learnerId: string) {
     const learner = learners.find((l) => l.id === learnerId);
     if (!learner || !learner.comprehensionValidee) {
