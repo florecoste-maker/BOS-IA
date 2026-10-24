@@ -18,6 +18,9 @@
 | Cockpit `/app/*` | ✅ Présent |
 | API TidyCal (`/api/integrations/tidycal`) | ✅ Prêt (jeton API optionnel pour l'embed) |
 | Statut connexions (`/app/integrations`) | ✅ Prêt |
+| Accès protégé par mot de passe (`/login`, `/app/*`, `/api/*`) | ✅ Prêt (fermé tant que non configuré) |
+| Agents IA connectés à l'API Claude (`POST /api/agents/run`) | ✅ Prêt (clé `ANTHROPIC_API_KEY` requise) |
+| CI GitHub (lint, tests, build) | ✅ Prêt |
 | Config Hostinger `standalone` + `.env.example` | ✅ Prêt |
 | Déploiement sur `bos.jamaliance.com` | ⏳ Manuel — après confirmation |
 
@@ -32,7 +35,8 @@ npm run dev
 Ouvrir [http://localhost:3000](http://localhost:3000) → entrée moteur → `/app`.
 
 ```bash
-npm run build
+npm run build   # + copie des assets standalone
+npm start       # serveur de production
 npm test
 npm run lint
 ```
@@ -53,21 +57,64 @@ npm run lint
 
 **Prérequis plan :** Business ou Cloud avec *Web Apps Node.js*.
 
-1. hPanel → **Sites web** → **Créer un site** → **Web App / Node.js**
-2. Importer le dépôt GitHub `BOS-IA` (branche fusionnée)
-3. Preset `next`, build `npm run build`, output `.next`, Node 20 ou 22
-4. Domaine / sous-domaine : **bos.jamaliance.com** (laisser jamaliance.com sur Horizons)
-5. Coller les variables de `.env.example` (dont `NEXT_PUBLIC_APP_URL=https://bos.jamaliance.com`)
+1. hPanel → **Sites web** → **Ajouter un site** → **Web App Node.js**
+2. Source : **GitHub** → dépôt `florecoste-maker/BOS-IA`, branche `main`
+3. Réglages de build :
+
+   | Champ | Valeur |
+   |-------|--------|
+   | Framework | Next.js |
+   | Version Node | 22 (minimum 20.9) |
+   | Commande d'installation | `npm ci` |
+   | Commande de build | `npm run build` |
+   | Commande de démarrage | `npm start` |
+   | Dossier de sortie | `.next` |
+
+4. Domaine : **bos.jamaliance.com** (sous-domaine ; jamaliance.com reste sur Horizons)
+5. Variables d'environnement : copier celles de `.env.example`, avec
+   `NEXT_PUBLIC_APP_URL=https://bos.jamaliance.com`.
+   Les variables `NEXT_PUBLIC_*` sont figées **au build** : après les avoir
+   modifiées, relancer un déploiement.
 6. Optionnel : `TIDYCAL_API_TOKEN` pour l'API (l'embed public vit déjà sur le site Horizons)
+   **Obligatoires** pour ouvrir le cockpit : `BOS_ADMIN_PASSWORD` (12 caractères
+   minimum) et `BOS_SESSION_SECRET` (32 caractères minimum, `openssl rand -hex 32`).
+   Sans elles, `/app` et `/api` restent fermés.
+7. Agents IA : `ANTHROPIC_API_KEY` (console.anthropic.com → API Keys).
+8. Vérifier : `https://bos.jamaliance.com/api/health` répond `{"ok":true}`, puis se
+   connecter sur `https://bos.jamaliance.com/login`.
+
+`npm run build` exécute ensuite `scripts/prepare-standalone.mjs`, qui copie
+`public/` et `.next/static/` dans `.next/standalone/` ; `npm start` lance
+`node .next/standalone/server.js` (port lu dans `PORT`).
+
+**Limite actuelle :** les données (sessions, OPCO, agents, propositions des agents)
+sont des données de démonstration en mémoire, réinitialisées à chaque redémarrage.
 
 Ne jamais pointer ce dépôt sur la racine jamaliance.com.
 
+## Sécurité
+
+- `src/proxy.ts` protège `/app/*` et `/api/*` ; seules `/api/health` et
+  `/api/auth/*` sont publiques. Session signée HMAC-SHA256, cookie `httpOnly`,
+  `secure`, `SameSite=Lax`, 12 h. 5 échecs de connexion par IP → blocage 15 min.
+- En-têtes HSTS, `X-Frame-Options: DENY`, `nosniff`, `noindex` sur tout le moteur.
+
+## Agents IA
+
+`POST /api/agents/run` `{ "agentId": "agt-005" }` : l'agent analyse les données du
+cockpit avec Claude (`claude-opus-5-5` par défaut, `BOS_AGENTS_MODEL` pour changer)
+et **propose** jusqu'à 3 actions. Rien n'est exécuté automatiquement. Les agents
+« HITL obligatoire » ou à risque élevé envoient toujours leurs propositions dans la
+file de validation humaine, quoi que réponde le modèle. Les e-mails des apprenants
+ne sont pas transmis au modèle.
+
 ## API intégrations
 
-- `GET /api/integrations/status` — état Hostinger / TidyCal (+ sonde live API)
+- `GET /api/health` — sonde publique de déploiement
+- `GET /api/integrations/status` — état Hostinger / TidyCal / agents IA (+ sonde live API)
 - `GET /api/integrations/tidycal?view=public|bookings|types|timeslots`
 - `POST /api/integrations/tidycal` — créer un créneau (types gratuits uniquement côté TidyCal)
 
 ## Stack
 
-Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Hostinger Node.js · TidyCal API
+Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Hostinger Node.js · TidyCal API · API Claude

@@ -47,6 +47,34 @@ export function AgentsClient({
     });
   }
 
+  const [runningId, setRunningId] = useState<string | null>(null);
+
+  async function runAgent(agentId: string) {
+    setRunningId(agentId);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/agents/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error ?? "Erreur");
+        return;
+      }
+      setAgents(data.agents);
+      setActions(data.actions);
+      setMessage(
+        `Analyse terminée (${data.run.model}) — ${data.run.actions.length} action(s) proposée(s).`,
+      );
+    } catch {
+      setMessage("Connexion au serveur impossible.");
+    } finally {
+      setRunningId(null);
+    }
+  }
+
   const pendingHitl = actions.filter(
     (a) => a.requiresHitl && a.hitlStatus === "pending",
   );
@@ -134,6 +162,14 @@ export function AgentsClient({
                   <StatusPill label="HITL obligatoire" tone="warn" />
                 ) : null}
               </div>
+              <button
+                type="button"
+                disabled={runningId !== null}
+                onClick={() => runAgent(agent.id)}
+                className="mt-4 border border-line px-3 py-1.5 text-xs font-semibold hover:border-brand/40 disabled:opacity-50"
+              >
+                {runningId === agent.id ? "Analyse en cours…" : "Lancer l'analyse IA"}
+              </button>
             </li>
           ))}
         </ul>

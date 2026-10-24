@@ -25,6 +25,11 @@ type Overview = {
     targetSubdomain?: string;
     needsFromUser: string[];
   };
+  agentsIa: {
+    status: "configured" | "partial" | "missing";
+    model: string;
+    needsFromUser: string[];
+  };
 };
 
 function tone(status: Overview["tidycal"]["status"]) {
@@ -115,6 +120,24 @@ export function IntegrationsPanel() {
         {data.hostinger.needsFromUser.length > 0 ? (
           <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-ink-muted">
             {data.hostinger.needsFromUser.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : null}
+      </article>
+
+      <article className="border-l-2 border-nexus/50 pl-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="font-display text-lg font-semibold text-ink">Agents IA (Claude)</h3>
+          <StatusPill label={label(data.agentsIa.status)} tone={tone(data.agentsIa.status)} />
+        </div>
+        <ul className="mt-3 space-y-1 text-sm text-ink-muted">
+          <li>Modèle : {data.agentsIa.model}</li>
+          <li>Validation humaine (HITL) : forcée pour les agents à risque</li>
+        </ul>
+        {data.agentsIa.needsFromUser.length > 0 ? (
+          <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-ink-muted">
+            {data.agentsIa.needsFromUser.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>

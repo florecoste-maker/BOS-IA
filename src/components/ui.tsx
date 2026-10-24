@@ -54,6 +54,14 @@ export function AppNav() {
           >
             Site public
           </a>
+          <form method="post" action="/api/auth/logout">
+            <button
+              type="submit"
+              className="rounded-md px-3 py-1.5 transition-colors hover:bg-bg-deep hover:text-ink"
+            >
+              Déconnexion
+            </button>
+          </form>
         </nav>
       </div>
     </header>
