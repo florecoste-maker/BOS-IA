@@ -10,7 +10,7 @@ export const brand = {
   /** Page RDV publique déjà en ligne. */
   reservationUrl: "https://jamaliance.com/reservation",
   /** Sous-domaine prévu pour ce moteur Next.js. */
-  appUrl: "https://bos.jamaliance.com",
+  appUrl: "https://app.jamaliance.com",
   description:
     "BOS-IA — cockpit opérationnel Jamaliance (formation, finance, agents IA). La vitrine publique reste sur jamaliance.com.",
 } as const;
