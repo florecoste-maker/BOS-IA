@@ -113,7 +113,7 @@ export function IntegrationsPanel() {
           <li>Moteur BOS-IA : {data.hostinger.appUrl ?? "non défini"}</li>
           <li>
             Sous-domaine cible :{" "}
-            {data.hostinger.targetSubdomain ?? "bos.jamaliance.com"}
+            {data.hostinger.targetSubdomain ?? "app.jamaliance.com"}
           </li>
           <li>Build Next.js : prêt (mode serveur / standalone)</li>
         </ul>

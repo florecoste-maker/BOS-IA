@@ -113,15 +113,15 @@ export function getIntegrationsOverview() {
       siteUrl: hostinger.siteUrl,
       appUrl: hostinger.appUrl,
       deployReady: true,
-      targetSubdomain: "bos.jamaliance.com",
+      targetSubdomain: "app.jamaliance.com",
       needsFromUser: [
         !hostinger.siteUrl
           ? "URL du site public Horizons (NEXT_PUBLIC_JAMALIANCE_SITE_URL), ex. https://jamaliance.com"
           : null,
         !hostinger.appUrl
-          ? "URL du moteur BOS-IA (NEXT_PUBLIC_APP_URL), prévu : https://bos.jamaliance.com"
+          ? "URL du moteur BOS-IA (NEXT_PUBLIC_APP_URL), prévu : https://app.jamaliance.com"
           : null,
-        "Web App Node.js Hostinger sur le sous-domaine bos.jamaliance.com (sans toucher à la vitrine Horizons)",
+        "Web App Node.js Hostinger sur le sous-domaine app.jamaliance.com (sans toucher à la vitrine Horizons)",
         "Variables d'environnement dans hPanel (voir .env.example)",
       ].filter(Boolean) as string[],
     },

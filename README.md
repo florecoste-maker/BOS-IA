@@ -5,7 +5,7 @@
 | Couche | URL | Hébergement |
 |--------|-----|-------------|
 | Vitrine publique | [jamaliance.com](https://jamaliance.com) | Hostinger Horizons (**ne pas remplacer**) |
-| Moteur BOS-IA | [bos.jamaliance.com](https://bos.jamaliance.com) | Hostinger Web App Node.js (à déployer) |
+| Moteur BOS-IA | [app.jamaliance.com](https://app.jamaliance.com) | Hostinger Web App Node.js (en ligne) |
 | Rendez-vous clients | [jamaliance.com/reservation](https://jamaliance.com/reservation) | Horizons + TidyCal (déjà en ligne) |
 
 ## Ce qui existe déjà
@@ -22,7 +22,7 @@
 | Agents IA connectés à l'API Claude (`POST /api/agents/run`) | ✅ Prêt (clé `ANTHROPIC_API_KEY` requise) |
 | CI GitHub (lint, tests, build) | ✅ Prêt |
 | Config Hostinger `standalone` + `.env.example` | ✅ Prêt |
-| Déploiement sur `bos.jamaliance.com` | ⏳ Manuel — après confirmation |
+| Déploiement sur `app.jamaliance.com` | ✅ En ligne |
 
 ## Démarrage local
 
@@ -53,7 +53,7 @@ npm run lint
 | `/app/agents` | Supervision multi-agents + HITL |
 | `/app/integrations` | État Hostinger / TidyCal (+ aperçu calendrier) |
 
-## Déploiement Hostinger (bos.jamaliance.com)
+## Déploiement Hostinger (app.jamaliance.com)
 
 **Prérequis plan :** Business ou Cloud avec *Web Apps Node.js*.
 
@@ -82,9 +82,9 @@ npm run lint
    `dependencies` : le build fonctionne même si Hostinger installe en mode
    production (`NODE_ENV=production`).
 
-4. Domaine : **bos.jamaliance.com** (sous-domaine ; jamaliance.com reste sur Horizons)
+4. Domaine : **app.jamaliance.com** (sous-domaine ; jamaliance.com reste sur Horizons)
 5. Variables d'environnement : copier celles de `.env.example`, avec
-   `NEXT_PUBLIC_APP_URL=https://bos.jamaliance.com`.
+   `NEXT_PUBLIC_APP_URL=https://app.jamaliance.com`.
    Les variables `NEXT_PUBLIC_*` sont figées **au build** : après les avoir
    modifiées, relancer un déploiement.
 6. Optionnel : `TIDYCAL_API_TOKEN` pour l'API (l'embed public vit déjà sur le site Horizons)
@@ -92,8 +92,8 @@ npm run lint
    minimum) et `BOS_SESSION_SECRET` (32 caractères minimum, `openssl rand -hex 32`).
    Sans elles, `/app` et `/api` restent fermés.
 7. Agents IA : `ANTHROPIC_API_KEY` (console.anthropic.com → API Keys).
-8. Vérifier : `https://bos.jamaliance.com/api/health` répond `{"ok":true}`, puis se
-   connecter sur `https://bos.jamaliance.com/login`.
+8. Vérifier : `https://app.jamaliance.com/api/health` répond `{"ok":true}`, puis se
+   connecter sur `https://app.jamaliance.com/login`.
 
 `npm run build` exécute ensuite `scripts/prepare-standalone.mjs`, qui copie
 `public/` et `.next/static/` dans `.next/standalone/` ; `npm start` lance
