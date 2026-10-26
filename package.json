@@ -5,6 +5,7 @@
   "description": "BOS-IA — assistant opérationnel Jamaliance (Hostinger + TidyCal)",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/clean-temp-config.mjs",
     "build": "next build --webpack",
     "postbuild": "node scripts/prepare-standalone.mjs",
     "start": "node server.js",
