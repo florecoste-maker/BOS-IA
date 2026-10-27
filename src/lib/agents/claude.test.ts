@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildAgentContext, normalizeProposal } from "./claude";
+import { getRepository } from "../data";
 import { store } from "../store";
 
 describe("Garde-fous des agents IA", () => {
@@ -27,7 +28,8 @@ describe("Garde-fous des agents IA", () => {
     assert.equal(out.actions[0].requiresHitl, false);
   });
 
-  it("n'envoie pas les e-mails des apprenants au modèle", () => {
-    assert.equal(JSON.stringify(buildAgentContext()).includes("@"), false);
+  it("n'envoie pas les e-mails des apprenants au modèle", async () => {
+    const context = await buildAgentContext(await getRepository());
+    assert.equal(JSON.stringify(context).includes("@"), false);
   });
 });

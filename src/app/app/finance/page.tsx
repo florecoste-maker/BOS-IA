@@ -1,10 +1,12 @@
 import { FinanceClient } from "@/components/finance-client";
 import { SectionTitle } from "@/components/ui";
-import { store } from "@/lib/store";
+import { getRepository } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
-export default function FinancePage() {
+export default async function FinancePage() {
+  const repo = await getRepository();
+  const [dossiers, invoices] = await Promise.all([repo.getOpcoDossiers(), repo.getInvoices()]);
   return (
     <>
       <SectionTitle
@@ -13,8 +15,8 @@ export default function FinancePage() {
         description="Complétude des dossiers de financement, facturation 30/70 et suivi du délai de paiement cible sous 30 jours."
       />
       <FinanceClient
-        initialDossiers={store.getOpcoDossiers()}
-        initialInvoices={store.getInvoices()}
+        initialDossiers={dossiers}
+        initialInvoices={invoices}
       />
     </>
   );

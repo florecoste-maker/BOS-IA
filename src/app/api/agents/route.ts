@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { store } from "@/lib/store";
+import { getRepository } from "@/lib/data";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({
-    agents: store.getAgents(),
-    actions: store.getAgentActions(),
-  });
+  const repo = await getRepository();
+  const [agents, actions] = await Promise.all([repo.getAgents(), repo.getAgentActions()]);
+  return NextResponse.json({ agents, actions });
 }
 
 export async function PATCH(request: Request) {
@@ -14,13 +15,14 @@ export async function PATCH(request: Request) {
     decision: "approved" | "rejected";
   };
 
-  const action = store.resolveHitl(body.actionId, body.decision);
+  const repo = await getRepository();
+  const action = await repo.resolveHitl(body.actionId, body.decision);
   if (!action) {
     return NextResponse.json({ error: "Action introuvable" }, { status: 404 });
   }
   return NextResponse.json({
     action,
-    agents: store.getAgents(),
-    actions: store.getAgentActions(),
+    agents: await repo.getAgents(),
+    actions: await repo.getAgentActions(),
   });
 }

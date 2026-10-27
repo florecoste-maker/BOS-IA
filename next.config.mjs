@@ -24,6 +24,8 @@ const securityHeaders = [
  */
 const nextConfig = {
   output: "standalone",
+  // Pilote MySQL chargé par Node tel quel (pas de bundling), copié dans standalone.
+  serverExternalPackages: ["mysql2"],
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

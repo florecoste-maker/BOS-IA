@@ -20,7 +20,8 @@
 | Statut connexions (`/app/integrations`) | ✅ Prêt |
 | Accès protégé par mot de passe (`/login`, `/app/*`, `/api/*`) | ✅ Prêt (fermé tant que non configuré) |
 | Agents IA connectés à l'API Claude (`POST /api/agents/run`) | ✅ Prêt (clé `ANTHROPIC_API_KEY` requise) |
-| CI GitHub (lint, tests, build) | ✅ Prêt |
+| Base de données MySQL / MariaDB (données persistantes) | ✅ Prêt (variables `DB_*` requises, sinon mode démo) |
+| CI GitHub (lint, tests, build, test MySQL 8) | ✅ Prêt |
 | Config Hostinger `standalone` + `.env.example` | ✅ Prêt |
 | Déploiement sur `app.jamaliance.com` | ✅ En ligne |
 
@@ -101,8 +102,10 @@ npm run lint
    les variables `NEXT_PUBLIC_*` de `.env.example` ne servent qu'à les changer et
    sont figées **au build** : après modification, redéployer.
 6. Agents IA : `ANTHROPIC_API_KEY` (console.anthropic.com → API Keys).
-7. Optionnel : `TIDYCAL_API_TOKEN` pour l'API (l'embed public vit déjà sur le site Horizons)
-8. Vérifier : `https://app.jamaliance.com/api/health` répond `{"ok":true}`, puis se
+7. Base de données : voir « Base de données » ci-dessous (`DB_HOST`, `DB_NAME`,
+   `DB_USER`, `DB_PASSWORD`).
+8. Optionnel : `TIDYCAL_API_TOKEN` pour l'API (l'embed public vit déjà sur le site Horizons)
+9. Vérifier : `https://app.jamaliance.com/api/health` répond `{"ok":true}`, puis se
    connecter sur `https://app.jamaliance.com/login`.
 
 `npm run build` exécute ensuite `scripts/prepare-standalone.mjs`, qui copie
@@ -110,8 +113,28 @@ npm run lint
 `node server.js`, qui démarre `.next/standalone/server.js` sur `0.0.0.0` (port lu
 dans `PORT`). L'écoute ne dépend donc pas de la variable système `HOSTNAME`.
 
-**Limite actuelle :** les données (sessions, OPCO, agents, propositions des agents)
-sont des données de démonstration en mémoire, réinitialisées à chaque redémarrage.
+## Base de données
+
+Sans base configurée, le cockpit tourne en **mode démonstration** : données fictives
+en mémoire, réinitialisées à chaque redémarrage, signalées par un bandeau.
+
+Pour les données réelles (MySQL ou MariaDB Hostinger) :
+
+1. hPanel → **Bases de données** → **Gestion** : créer une base et un utilisateur
+   (Hostinger préfixe les noms, par ex. `u123456789_bosia`).
+2. Ajouter dans les variables d'environnement de la Web App : `DB_HOST` (souvent
+   `localhost`, sinon l'hôte indiqué par hPanel), `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+   — ou une seule `DATABASE_URL=mysql://utilisateur:motdepasse@hote:3306/base`.
+3. Redémarrer / redéployer. Au premier accès, les tables `bos_*` sont créées et les
+   6 agents enregistrés. **Aucune donnée fictive** n'est insérée.
+4. Vérifier `/app/integrations` → carte « Base de données » : « MySQL connecté ».
+
+Les indicateurs sont calculés à partir des données. Le délai de paiement et le MRR
+affichent « — » : les données ne contiennent ni date de paiement ni abonnement.
+Les jours de retard des factures sont calculés à partir de l'échéance.
+
+Test d'intégration local : `BOS_TEST_DATABASE_URL=mysql://… npm test`
+(**supprime les tables `bos_*` de la base indiquée** ; utiliser une base de test).
 
 Ne jamais pointer ce dépôt sur la racine jamaliance.com.
 
@@ -140,4 +163,4 @@ ne sont pas transmis au modèle.
 
 ## Stack
 
-Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Hostinger Node.js · TidyCal API · API Claude
+Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Hostinger Node.js · MySQL / MariaDB · TidyCal API · API Claude

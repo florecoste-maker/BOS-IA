@@ -120,8 +120,10 @@ export interface DashboardMetrics {
   ghostLearners: number;
   dossiersOpcoOuverts: number;
   facturesEnRetard: number;
-  delaiPaiementMoyen: number;
-  mrr: number;
+  /** null : non calculable avec les données disponibles. */
+  delaiPaiementMoyen: number | null;
+  /** null : non calculable avec les données disponibles. */
+  mrr: number | null;
   agentsActifs: number;
   actionsHitl: number;
   pipelineCompletions: number;
