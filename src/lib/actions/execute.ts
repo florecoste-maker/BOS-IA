@@ -1,12 +1,23 @@
 /**
- * Exécution des actions approuvées en file HITL. Seuls les brouillons d'e-mail
- * sont exécutables ; les autres actions restent à réaliser par l'équipe.
- * Le destinataire vient des données (apprenant ou client de facture), jamais du modèle.
+ * Exécution des actions approuvées en file HITL : changement de statut d'une
+ * fiche, puis envoi de l'e-mail s'il y en a un. Les autres actions restent à
+ * réaliser par l'équipe. Le destinataire et la fiche viennent des données,
+ * jamais du modèle.
  */
-import { alertSendFailure } from "@/lib/alerts";
-import type { Repository } from "@/lib/data";
+import { alertActionFailure, alertSendFailure } from "@/lib/alerts";
+import type { HitlEdits, Repository } from "@/lib/data";
+import { statusLabel } from "@/lib/format";
+import { OPERATIONS, isAllowedValue } from "./operations";
 import { getMailConfig, isEmail, sendMail } from "@/lib/mail";
-import type { ActionExecution, AgentAction } from "@/lib/types";
+import type {
+  ActionExecution,
+  AgentAction,
+  EmailDraft,
+  InvoiceStatus,
+  LearnerStatus,
+  OpcoStatus,
+  StatusOperation,
+} from "@/lib/types";
 
 export class ActionError extends Error {
   constructor(
@@ -34,16 +45,47 @@ export async function executeAction(repo: Repository, actionId: string) {
     execution = result("echec", "Erreur interne pendant l'exécution");
   }
   await repo.finishExecution(actionId, execution);
-  if (execution.statut === "echec" && action.email) {
-    await alertSendFailure(action.email.objet, execution.message).catch(() => {});
+  if (execution.statut === "echec") {
+    const alert = action.email
+      ? alertSendFailure(action.email.objet, execution.message)
+      : action.operation
+        ? alertActionFailure(OPERATIONS[action.operation.type].libelle, execution.message)
+        : null;
+    await alert?.catch(() => {});
   }
   return execution;
 }
 
-async function run(repo: Repository, action: AgentAction): Promise<ActionExecution> {
-  const draft = action.email;
-  if (!draft) return result("a_faire", "Action à réaliser par l'équipe");
+/** Applique un changement de statut (idempotent : un renvoi le réapplique sans effet). */
+async function applyOperation(repo: Repository, op: StatusOperation): Promise<ActionExecution> {
+  if (!isAllowedValue(op.type, op.valeur)) {
+    return result("echec", `Valeur « ${op.valeur} » non autorisée pour ${OPERATIONS[op.type].libelle.toLowerCase()}`);
+  }
+  const target = await repo.findOperationTarget(op);
+  if (!target) return result("echec", `Fiche introuvable (${OPERATIONS[op.type].cible} ${op.refId} supprimé ?)`);
+  const done =
+    op.type === "statut_apprenant"
+      ? await repo.updateLearnerStatus(op.refId, op.valeur as LearnerStatus)
+      : op.type === "statut_dossier"
+        ? await repo.updateDossierStatus(op.refId, op.valeur as OpcoStatus)
+        : await repo.updateInvoiceStatus(op.refId, op.valeur as InvoiceStatus);
+  if (!done) return result("echec", `Fiche introuvable (${OPERATIONS[op.type].cible} ${op.refId})`);
+  return result("fait", `${target.libelle} : ${target.actuel} → ${statusLabel(op.valeur)}`);
+}
 
+async function run(repo: Repository, action: AgentAction): Promise<ActionExecution> {
+  // 1. Changement de statut ; s'il échoue, l'e-mail ne part pas.
+  const applied = action.operation ? await applyOperation(repo, action.operation) : null;
+  if (applied?.statut === "echec") return applied;
+
+  // 2. E-mail éventuel ; le message final rappelle le statut appliqué.
+  const draft = action.email;
+  if (!draft) return applied ?? result("a_faire", "Action à réaliser par l'équipe");
+  const sent = await sendDraft(repo, draft);
+  return applied ? { ...sent, message: `${applied.message} ; ${sent.message}` } : sent;
+}
+
+async function sendDraft(repo: Repository, draft: EmailDraft): Promise<ActionExecution> {
   if (repo.mode === "demo") {
     return result("simule", "Mode démonstration : aucun e-mail envoyé");
   }
@@ -65,7 +107,7 @@ async function run(repo: Repository, action: AgentAction): Promise<ActionExecuti
   if (!config) {
     return result(
       "a_faire",
-      `SMTP non configuré : envoyez-le vous-même à ${recipient.email}, ou configurez SMTP puis « Renvoyer »`,
+      `SMTP non configuré : envoyez-le vous-même à ${recipient.email}, ou configurez SMTP puis « Réessayer »`,
     );
   }
 
@@ -80,7 +122,7 @@ async function run(repo: Repository, action: AgentAction): Promise<ActionExecuti
   } catch (error) {
     const e = error as { code?: string; responseCode?: number; response?: string };
     const detail = e.responseCode ? `${e.responseCode} ${e.response ?? ""}`.trim() : (e.code ?? "erreur");
-    return result("echec", `Échec SMTP (${detail.slice(0, 200)}) : vérifiez la configuration puis « Renvoyer »`);
+    return result("echec", `Échec SMTP (${detail.slice(0, 200)}) : vérifiez la configuration puis « Réessayer »`);
   }
 }
 
@@ -89,12 +131,12 @@ export async function decideAction(
   repo: Repository,
   actionId: string,
   decision: "approved" | "rejected",
-  edits?: { objet?: string; corps?: string },
+  edits?: HitlEdits,
   decidePar?: string,
 ) {
   const action = await repo.resolveHitl(actionId, decision, edits, decidePar);
   if (!action) throw new ActionError("Action introuvable ou déjà traitée", 409);
-  if (decision === "approved" && action.email) {
+  if (decision === "approved" && (action.email || action.operation)) {
     const execution = await executeAction(repo, actionId);
     if (execution) action.execution = execution;
   }
@@ -108,19 +150,26 @@ export async function retryAction(repo: Repository, actionId: string) {
   return execution;
 }
 
-/** Ajoute le destinataire résolu aux brouillons, pour la relecture humaine. */
+/** Ajoute le destinataire et la fiche visée (statut actuel), pour la relecture humaine. */
 export async function withRecipients(repo: Repository, actions: AgentAction[]) {
   return Promise.all(
     actions.map(async (action) => {
-      if (!action.email) return action;
-      const recipient = await repo.findRecipient(action.email);
-      return {
-        ...action,
-        email: {
-          ...action.email,
-          destinataire: recipient ?? { nom: "Destinataire introuvable", email: null },
-        },
-      };
+      let enriched = action;
+      if (action.email) {
+        const recipient = await repo.findRecipient(action.email);
+        enriched = {
+          ...enriched,
+          email: { ...action.email, destinataire: recipient ?? { nom: "Destinataire introuvable", email: null } },
+        };
+      }
+      if (action.operation) {
+        const cible = await repo.findOperationTarget(action.operation);
+        enriched = {
+          ...enriched,
+          operation: { ...action.operation, cible: cible ?? { libelle: "Fiche introuvable", actuel: "—" } },
+        };
+      }
+      return enriched;
     }),
   );
 }

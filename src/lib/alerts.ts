@@ -91,6 +91,19 @@ export async function sendRunReport(repo: Repository, results: RunOutcome[]): Pr
   return sendAlert(subject, lines.join("\n"));
 }
 
+/** Alerte immédiate quand un changement de statut approuvé n'a pas pu s'appliquer. */
+export async function alertActionFailure(libelle: string, message: string) {
+  return sendAlert(
+    "Échec d'une action approuvée",
+    [
+      `L'action « ${libelle} » n'a pas été appliquée.`,
+      `Motif : ${message}`,
+      "",
+      `Après correction, utilisez « Réessayer » : ${cockpitUrl("/app/agents")}`,
+    ].join("\n"),
+  );
+}
+
 /** Alerte immédiate quand un e-mail approuvé n'a pas pu partir. */
 export async function alertSendFailure(objet: string, message: string) {
   return sendAlert(
@@ -99,7 +112,7 @@ export async function alertSendFailure(objet: string, message: string) {
       `L'e-mail « ${objet} » n'a pas été envoyé.`,
       `Motif : ${message}`,
       "",
-      `Après correction, utilisez « Renvoyer » : ${cockpitUrl("/app/agents")}`,
+      `Après correction, utilisez « Réessayer » : ${cockpitUrl("/app/agents")}`,
     ].join("\n"),
   );
 }

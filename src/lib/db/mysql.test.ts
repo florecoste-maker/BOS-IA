@@ -18,7 +18,10 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
     conn = await mysql.createConnection(url!);
     for (const t of [
       "bos_agent_actions",
+      "bos_agent_runs",
       "bos_agents",
+      "bos_audit",
+      "bos_users",
       "bos_invoices",
       "bos_opco_dossiers",
       "bos_learners",
@@ -396,5 +399,58 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
     const stored = (await repo.getAgentActions()).find((a) => a.id === run!.actions[0].id)!;
     assert.equal(stored.decidePar, "Camille Martin");
     assert.ok(stored.decideLe);
+  });
+  it("migre puis applique les changements de statut approuvés (facture, dossier, apprenant)", async () => {
+    await conn.query("ALTER TABLE bos_agent_actions DROP COLUMN op_type, DROP COLUMN op_ref, DROP COLUMN op_valeur");
+    const state = (globalThis as { __bosDb?: { pool: { end(): Promise<void> } } }).__bosDb;
+    await state?.pool.end();
+    (globalThis as { __bosDb?: unknown }).__bosDb = undefined;
+
+    const { decideAction } = await import("@/lib/actions/execute");
+    const learner = (await repo.getLearners())[0];
+    const invoice = (await repo.getInvoices())[0];
+    const dossier = (await repo.getOpcoDossiers())[0];
+    const op = (type: "statut_apprenant" | "statut_dossier" | "statut_facture", refId: string, valeur: string) => ({
+      type: "statut",
+      description: "Changer le statut",
+      requiresHitl: true,
+      operation: { type, refId, valeur },
+    });
+    const run = await repo.recordAgentRun(
+      "agt-005",
+      {
+        resume: "r",
+        actions: [
+          op("statut_facture", invoice.id, "relance"),
+          op("statut_dossier", dossier.id, "transmis"),
+          op("statut_apprenant", learner.id, "inactif"),
+          {
+            ...op("statut_dossier", "opco-inexistant", "transmis"),
+            email: { cible: "apprenant" as const, refId: learner.id, objet: "x", corps: "y" },
+          },
+        ],
+      },
+      "m",
+    );
+    const [facture, dos, appr, fantome] = run!.actions.map((a) => a.id);
+    const stored = (await repo.getAgentActions()).find((a) => a.id === facture)!;
+    assert.deepEqual(stored.operation, { type: "statut_facture", refId: invoice.id, valeur: "relance" });
+    assert.equal((await repo.findOperationTarget(stored.operation!))?.libelle, `Facture ${invoice.numero} (${invoice.client})`);
+
+    // Valeur modifiée à l'approbation (autorisée), puis valeur interdite ignorée.
+    const f = await decideAction(repo, facture, "approved", { valeur: "impayee" });
+    assert.equal(f.execution?.statut, "fait");
+    assert.equal((await repo.getInvoices()).find((i) => i.id === invoice.id)?.status, "impayee");
+    const d = await decideAction(repo, dos, "approved", { valeur: "accepte_par_magie" });
+    assert.equal(d.operation?.valeur, "transmis");
+    assert.equal((await repo.getOpcoDossiers()).find((x) => x.id === dossier.id)?.status, "transmis");
+    await decideAction(repo, appr, "approved");
+    assert.equal((await repo.getLearners()).find((l) => l.id === learner.id)?.status, "inactif");
+
+    // Fiche introuvable : échec, et l'e-mail associé n'est pas tenté.
+    const ko = await decideAction(repo, fantome, "approved");
+    assert.equal(ko.execution?.statut, "echec");
+    assert.match(ko.execution!.message, /Fiche introuvable/);
+    assert.doesNotMatch(ko.execution!.message, /SMTP|envoy/i);
   });
 });
