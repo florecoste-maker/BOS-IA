@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { AgentRunError, runAgent } from "@/lib/agents/claude";
-import { store } from "@/lib/store";
+import { getRepository } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -13,10 +13,11 @@ export async function POST(request: Request) {
 
   try {
     const run = await runAgent(body.agentId);
+    const repo = await getRepository();
     return NextResponse.json({
       run,
-      agents: store.getAgents(),
-      actions: store.getAgentActions(),
+      agents: await repo.getAgents(),
+      actions: await repo.getAgentActions(),
     });
   } catch (error) {
     if (error instanceof AgentRunError) {

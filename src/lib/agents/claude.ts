@@ -5,7 +5,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { brand } from "@/lib/brand";
-import { store } from "@/lib/store";
+import { getRepository, type Repository } from "@/lib/data";
 import type { Agent } from "@/lib/types";
 
 export const DEFAULT_AGENTS_MODEL = "claude-opus-5-5";
@@ -49,17 +49,24 @@ const proposalSchema = {
 } as const;
 
 /** Données du cockpit transmises à l'agent, sans e-mails (minimisation RGPD). */
-export function buildAgentContext() {
+export async function buildAgentContext(repo: Repository) {
+  const [sessions, learners, dossiersOpco, factures, indicateurs] = await Promise.all([
+    repo.getSessions(),
+    repo.getLearners(),
+    repo.getOpcoDossiers(),
+    repo.getInvoices(),
+    repo.getMetrics(),
+  ]);
   return {
-    sessions: store.getSessions(),
-    apprenants: store.getLearners().map((learner) => {
+    sessions,
+    apprenants: learners.map((learner) => {
       const copy: Partial<typeof learner> = { ...learner };
       delete copy.email;
       return copy;
     }),
-    dossiersOpco: store.getOpcoDossiers(),
-    factures: store.getInvoices(),
-    indicateurs: store.getMetrics(),
+    dossiersOpco,
+    factures,
+    indicateurs,
   };
 }
 
@@ -99,7 +106,8 @@ export class AgentRunError extends Error {
 }
 
 export async function runAgent(agentId: string) {
-  const agent = store.getAgents().find((a) => a.id === agentId);
+  const repo = await getRepository();
+  const agent = (await repo.getAgents()).find((a) => a.id === agentId);
   if (!agent) throw new AgentRunError("Agent introuvable", 404);
 
   const { apiKey, model, configured } = getAgentsConfig();
@@ -126,7 +134,7 @@ export async function runAgent(agentId: string) {
       messages: [
         {
           role: "user",
-          content: `Données du cockpit (JSON) :\n${JSON.stringify(buildAgentContext())}\n\nAnalyse-les selon ton rôle et propose tes actions.`,
+          content: `Données du cockpit (JSON) :\n${JSON.stringify(await buildAgentContext(repo))}\n\nAnalyse-les selon ton rôle et propose tes actions.`,
         },
       ],
     });
@@ -159,5 +167,5 @@ export async function runAgent(agentId: string) {
   }
 
   const proposal = normalizeProposal(agent, parsed);
-  return store.recordAgentRun(agent.id, proposal, response.model);
+  return repo.recordAgentRun(agent.id, proposal, response.model);
 }

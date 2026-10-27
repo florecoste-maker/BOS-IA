@@ -1,22 +1,25 @@
 import { NextResponse } from "next/server";
-import { store } from "@/lib/store";
+import { getRepository } from "@/lib/data";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const repo = await getRepository();
+  const [metrics, sessions, learners, dossiers, invoices, agents] = await Promise.all([
+    repo.getMetrics(),
+    repo.getSessions(),
+    repo.getLearners(),
+    repo.getOpcoDossiers(),
+    repo.getInvoices(),
+    repo.getAgents(),
+  ]);
   return NextResponse.json({
-    metrics: store.getMetrics(),
+    mode: repo.mode,
+    metrics,
     pillars: {
-      lms: {
-        sessions: store.getSessions().length,
-        learners: store.getLearners().length,
-      },
-      erp: {
-        dossiers: store.getOpcoDossiers().length,
-        invoices: store.getInvoices().length,
-      },
-      nexus: {
-        agents: store.getAgents().length,
-        hitl: store.getMetrics().actionsHitl,
-      },
+      lms: { sessions: sessions.length, learners: learners.length },
+      erp: { dossiers: dossiers.length, invoices: invoices.length },
+      nexus: { agents: agents.length, hitl: metrics.actionsHitl },
     },
   });
 }

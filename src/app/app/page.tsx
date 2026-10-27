@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { Metric, SectionTitle, StatusPill } from "@/components/ui";
 import { formatMoney } from "@/lib/format";
-import { store } from "@/lib/store";
+import { getRepository } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
-  const metrics = store.getMetrics();
-  const sessions = store.getSessions().filter((s) => s.statut === "en_cours");
-  const hitl = store
-    .getAgentActions()
-    .filter((a) => a.requiresHitl && a.hitlStatus === "pending");
+export default async function DashboardPage() {
+  const repo = await getRepository();
+  const [metrics, allSessions, actions] = await Promise.all([
+    repo.getMetrics(),
+    repo.getSessions(),
+    repo.getAgentActions(),
+  ]);
+  const sessions = allSessions.filter((s) => s.statut === "en_cours");
+  const hitl = actions.filter((a) => a.requiresHitl && a.hitlStatus === "pending");
 
   return (
     <>
@@ -33,12 +36,12 @@ export default function DashboardPage() {
         />
         <Metric
           label="Délai paiement"
-          value={`${metrics.delaiPaiementMoyen} j`}
-          hint="Cible < 30 jours"
+          value={metrics.delaiPaiementMoyen === null ? "—" : `${metrics.delaiPaiementMoyen} j`}
+          hint={metrics.delaiPaiementMoyen === null ? "Non calculé (dates de paiement absentes)" : "Cible < 30 jours"}
         />
         <Metric
           label="MRR"
-          value={formatMoney(metrics.mrr)}
+          value={metrics.mrr === null ? "—" : formatMoney(metrics.mrr)}
           hint={`${metrics.agentsActifs} agents actifs`}
         />
       </section>

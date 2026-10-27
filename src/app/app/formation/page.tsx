@@ -1,10 +1,12 @@
 import { FormationClient } from "@/components/formation-client";
 import { SectionTitle } from "@/components/ui";
-import { store } from "@/lib/store";
+import { getRepository } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
-export default function FormationPage() {
+export default async function FormationPage() {
+  const repo = await getRepository();
+  const [learners, sessions] = await Promise.all([repo.getLearners(), repo.getSessions()]);
   return (
     <>
       <SectionTitle
@@ -13,8 +15,8 @@ export default function FormationPage() {
         description="Du lead à la certification : compréhension validée, détection des ghost learners et déclenchement Proof-to-Cash."
       />
       <FormationClient
-        initialLearners={store.getLearners()}
-        initialSessions={store.getSessions()}
+        initialLearners={learners}
+        initialSessions={sessions}
       />
     </>
   );

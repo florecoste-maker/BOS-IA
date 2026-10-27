@@ -7,6 +7,7 @@ import type {
   OpcoDossier,
   TrainingSession,
 } from "./types";
+import { computeMetrics as computeMetricsFrom } from "./metrics";
 
 function daysAgo(n: number): string {
   const d = new Date();
@@ -331,26 +332,11 @@ const agentActions: AgentAction[] = [
 ];
 
 function computeMetrics(): DashboardMetrics {
-  const ghostLearners = learners.filter((l) => l.status === "inactif").length;
-  const actionsHitl = agentActions.filter(
-    (a) => a.requiresHitl && a.hitlStatus === "pending",
-  ).length;
-  return {
-    apprenantsActifs: learners.filter((l) =>
-      ["en_formation", "inscrit", "certifie"].includes(l.status),
-    ).length,
-    ghostLearners,
-    dossiersOpcoOuverts: opcoDossiers.filter((d) =>
-      ["brouillon", "completude", "transmis", "accepte"].includes(d.status),
-    ).length,
-    facturesEnRetard: invoices.filter((i) => i.joursRetard > 0).length,
-    delaiPaiementMoyen: 22,
-    mrr: 450,
-    agentsActifs: agents.filter((a) => a.status === "actif").length,
-    actionsHitl,
-    pipelineCompletions: learners.filter((l) => l.pipelineStage === "completion")
-      .length,
-  };
+  // Délai et MRR : valeurs fixes de démonstration.
+  return computeMetricsFrom(
+    { learners, opcoDossiers, invoices, agents, agentActions },
+    { delaiPaiementMoyen: 22, mrr: 450 },
+  );
 }
 
 /** System of Record in-memory (démo). Isolé par tenant conceptuel. */

@@ -7,7 +7,7 @@ describe("BOS-IA System of Record", () => {
     const m = store.getMetrics();
     assert.ok(m.apprenantsActifs >= 1);
     assert.ok(m.agentsActifs >= 1);
-    assert.equal(typeof m.mrr, "number");
+    assert.equal(typeof m.mrr, "number"); // valeur fixe en démonstration
   });
 
   it("détecte les ghost learners", () => {

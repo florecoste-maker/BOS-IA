@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { store } from "@/lib/store";
+import { getRepository } from "@/lib/data";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({
-    dossiers: store.getOpcoDossiers(),
-    invoices: store.getInvoices(),
-  });
+  const repo = await getRepository();
+  const [dossiers, invoices] = await Promise.all([repo.getOpcoDossiers(), repo.getInvoices()]);
+  return NextResponse.json({ dossiers, invoices });
 }
 
 export async function PATCH(request: Request) {
@@ -15,7 +16,7 @@ export async function PATCH(request: Request) {
   };
 
   if (body.action === "complete") {
-    const dossier = store.completeOpcoDossier(body.dossierId);
+    const dossier = await (await getRepository()).completeOpcoDossier(body.dossierId);
     if (!dossier) {
       return NextResponse.json({ error: "Dossier introuvable" }, { status: 404 });
     }

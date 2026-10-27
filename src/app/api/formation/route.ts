@@ -1,23 +1,26 @@
 import { NextResponse } from "next/server";
-import { store } from "@/lib/store";
+import { getRepository } from "@/lib/data";
+import type { LearnerStatus } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({
-    learners: store.getLearners(),
-    sessions: store.getSessions(),
-  });
+  const repo = await getRepository();
+  const [learners, sessions] = await Promise.all([repo.getLearners(), repo.getSessions()]);
+  return NextResponse.json({ learners, sessions });
 }
 
 export async function PATCH(request: Request) {
   const body = (await request.json()) as {
     id: string;
     action: "status" | "validate" | "proof_to_cash";
-    status?: Parameters<typeof store.updateLearnerStatus>[1];
+    status?: LearnerStatus;
     score?: number;
   };
+  const repo = await getRepository();
 
   if (body.action === "status" && body.status) {
-    const learner = store.updateLearnerStatus(body.id, body.status);
+    const learner = await repo.updateLearnerStatus(body.id, body.status);
     if (!learner) {
       return NextResponse.json({ error: "Apprenant introuvable" }, { status: 404 });
     }
@@ -25,7 +28,7 @@ export async function PATCH(request: Request) {
   }
 
   if (body.action === "validate") {
-    const learner = store.validateComprehension(body.id, body.score ?? 0);
+    const learner = await repo.validateComprehension(body.id, body.score ?? 0);
     if (!learner) {
       return NextResponse.json({ error: "Apprenant introuvable" }, { status: 404 });
     }
@@ -33,7 +36,7 @@ export async function PATCH(request: Request) {
   }
 
   if (body.action === "proof_to_cash") {
-    const result = store.emitProofToCash(body.id);
+    const result = await repo.emitProofToCash(body.id);
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
