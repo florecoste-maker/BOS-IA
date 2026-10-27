@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { audit } from "@/lib/audit";
 import { isDatabaseConfigured } from "@/lib/db/config";
+import { getActor } from "@/lib/session";
 import { decodeText, parseCsv } from "@/lib/import/csv";
 import { IMPORT_KINDS, parseImport, type ImportKind } from "@/lib/import/schema";
 import { XlsxError, readXlsx } from "@/lib/import/xlsx";
@@ -69,5 +71,11 @@ export async function POST(request: Request) {
   }
 
   const report = await importIntoDatabase(kind, parsed.rows, { dryRun });
+  if (report.committed) {
+    await audit(await getActor(), "import", kind, {
+      details: { fichier: file.name, crees: report.created, misAJour: report.updated },
+      request,
+    });
+  }
   return NextResponse.json({ ...base, ...report });
 }

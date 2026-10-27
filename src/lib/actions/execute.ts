@@ -90,8 +90,9 @@ export async function decideAction(
   actionId: string,
   decision: "approved" | "rejected",
   edits?: { objet?: string; corps?: string },
+  decidePar?: string,
 ) {
-  const action = await repo.resolveHitl(actionId, decision, edits);
+  const action = await repo.resolveHitl(actionId, decision, edits, decidePar);
   if (!action) throw new ActionError("Action introuvable ou déjà traitée", 409);
   if (decision === "approved" && action.email) {
     const execution = await executeAction(repo, actionId);

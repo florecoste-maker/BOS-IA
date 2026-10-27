@@ -8,7 +8,8 @@ export const metadata: Metadata = {
 };
 
 const messages: Record<string, string> = {
-  mdp: "Mot de passe incorrect.",
+  mdp: "Mot de passe de secours incorrect.",
+  identifiants: "E-mail ou mot de passe incorrect, ou compte désactivé.",
   bloque: "Trop de tentatives. Réessayez dans 15 minutes.",
   config:
     "Accès non configuré : renseignez BOS_ADMIN_PASSWORD et BOS_SESSION_SECRET dans hPanel, puis redéployez.",
@@ -36,6 +37,18 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
       <form method="post" action="/api/auth/login" className="mt-6 space-y-4">
         <input type="hidden" name="next" value={next} />
+        <label className="block text-sm font-medium text-ink">
+          E-mail
+          <input
+            type="email"
+            name="email"
+            autoComplete="username"
+            className="mt-1 block w-full border border-line bg-surface px-3 py-2 text-base text-ink"
+          />
+          <span className="mt-1 block text-xs font-normal text-ink-muted">
+            Laisser vide pour utiliser le mot de passe de secours.
+          </span>
+        </label>
         <label className="block text-sm font-medium text-ink">
           Mot de passe
           <input

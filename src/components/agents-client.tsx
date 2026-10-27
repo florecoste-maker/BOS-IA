@@ -217,7 +217,10 @@ export function AgentsClient({
                 <span className="font-medium">
                   {action.email ? action.email.objet : action.type}
                 </span>
-                <span className="text-xs text-ink-muted">{formatDate(action.timestamp)}</span>
+                <span className="text-xs text-ink-muted">
+                  {formatDate(action.timestamp)}
+                  {action.decidePar ? ` · approuvé par ${action.decidePar}` : ""}
+                </span>
                 {action.execution?.message ? (
                   <span className="basis-full text-ink-muted">{action.execution.message}</span>
                 ) : (

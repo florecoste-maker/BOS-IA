@@ -125,6 +125,9 @@ export interface AgentAction {
   email?: EmailDraft;
   /** Résultat de l'exécution après approbation. */
   execution?: ActionExecution;
+  /** Auteur et date de la décision humaine. */
+  decidePar?: string;
+  decideLe?: string;
 }
 
 export interface EmailDraft {
@@ -172,4 +175,27 @@ export interface AgentRunLog {
   message: string;
   actions: number;
   model?: string;
+}
+
+/** Compte nominatif (le hash du mot de passe ne sort jamais de la couche données). */
+export interface User {
+  id: string;
+  email: string;
+  nom: string;
+  role: "admin" | "membre";
+  actif: boolean;
+  creeLe: string;
+  derniereConnexion?: string;
+}
+
+/** Entrée du journal des actions : qui, quoi, quand, d'où. */
+export interface AuditEntry {
+  id: string;
+  le: string;
+  utilisateurId: string;
+  utilisateur: string;
+  action: string;
+  objet: string;
+  details?: string;
+  ip?: string;
 }

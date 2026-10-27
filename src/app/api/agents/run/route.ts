@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { withRecipients } from "@/lib/actions/execute";
 import { AgentRunError, runAgent } from "@/lib/agents/claude";
+import { audit } from "@/lib/audit";
 import { getRepository } from "@/lib/data";
+import { getActor } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -14,6 +16,10 @@ export async function POST(request: Request) {
 
   try {
     const run = await runAgent(body.agentId);
+    await audit(await getActor(), "analyse_lancee", body.agentId, {
+      details: { actions: run?.actions.length ?? 0 },
+      request,
+    });
     const repo = await getRepository();
     return NextResponse.json({
       run,

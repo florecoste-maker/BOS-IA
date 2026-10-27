@@ -16,9 +16,31 @@ import type {
   Learner,
   OpcoDossier,
   TrainingSession,
+  User,
+  AuditEntry,
 } from "./types";
 
 export type DataMode = "mysql" | "demo";
+
+export interface NewUser {
+  email: string;
+  nom: string;
+  role: User["role"];
+  passwordHash: string;
+}
+
+export interface UserPatch {
+  nom?: string;
+  role?: User["role"];
+  actif?: boolean;
+  passwordHash?: string;
+}
+
+export interface AuditFilter {
+  limit?: number;
+  utilisateurId?: string;
+  action?: string;
+}
 
 export interface AgentProposalInput {
   resume: string;
@@ -65,6 +87,7 @@ export interface Repository {
     actionId: string,
     decision: "approved" | "rejected",
     edits?: { objet?: string; corps?: string },
+    decidePar?: string,
   ): Promise<AgentAction | null>;
   /** Réserve l'exécution d'une action approuvée ; null si déjà en cours ou faite. */
   claimExecution(actionId: string): Promise<AgentAction | null>;
@@ -80,11 +103,28 @@ export interface Repository {
   /** Historique des exécutions d'agents, plus récentes d'abord. */
   logAgentRun(run: AgentRunLog): Promise<void>;
   getAgentRuns(limit?: number): Promise<AgentRunLog[]>;
+  /* Comptes nominatifs */
+  listUsers(): Promise<User[]>;
+  findUserById(id: string): Promise<User | null>;
+  /** Compte et hash pour la connexion uniquement. */
+  findUserForLogin(email: string): Promise<{ user: User; passwordHash: string } | null>;
+  createUser(input: NewUser): Promise<User | null>;
+  updateUser(id: string, patch: UserPatch): Promise<User | null>;
+  touchLogin(id: string): Promise<void>;
+  /* Journal des actions */
+  recordAudit(entry: AuditEntry): Promise<void>;
+  getAudit(filter?: AuditFilter): Promise<AuditEntry[]>;
   /** Exécute `work` sous un verrou exclusif ; `null` si déjà pris ailleurs. */
   withLock<T>(name: string, work: () => Promise<T>): Promise<{ value: T } | null>;
 }
 
 const demoRuns: AgentRunLog[] = [];
+const demoUsers: Array<User & { passwordHash: string }> = [];
+const demoAudit: AuditEntry[] = [];
+const publicUser = ({ passwordHash: _hash, ...user }: User & { passwordHash: string }): User => {
+  void _hash;
+  return { ...user };
+};
 const demoLocks = new Set<string>();
 
 const demoRepository: Repository = {
@@ -100,7 +140,8 @@ const demoRepository: Repository = {
   validateComprehension: async (id, score) => store.validateComprehension(id, score),
   completeOpcoDossier: async (id) => store.completeOpcoDossier(id),
   markInvoicePaid: async (id, payeeLe) => store.markInvoicePaid(id, payeeLe),
-  resolveHitl: async (actionId, decision, edits) => store.resolveHitl(actionId, decision, edits),
+  resolveHitl: async (actionId, decision, edits, decidePar) =>
+    store.resolveHitl(actionId, decision, edits, decidePar),
   claimExecution: async (actionId) => store.claimExecution(actionId),
   finishExecution: async (actionId, execution) => store.finishExecution(actionId, execution),
   findRecipient: async (draft) => store.findRecipient(draft),
@@ -112,6 +153,49 @@ const demoRepository: Repository = {
     demoRuns.splice(200);
   },
   getAgentRuns: async (limit = 50) => demoRuns.slice(0, limit),
+  listUsers: async () => demoUsers.map(publicUser),
+  findUserById: async (id) => {
+    const u = demoUsers.find((x) => x.id === id);
+    return u ? publicUser(u) : null;
+  },
+  findUserForLogin: async (email) => {
+    const u = demoUsers.find((x) => x.email === email.toLowerCase());
+    return u ? { user: publicUser(u), passwordHash: u.passwordHash } : null;
+  },
+  createUser: async (input) => {
+    const email = input.email.toLowerCase();
+    if (demoUsers.some((u) => u.email === email)) return null;
+    const user = {
+      id: `usr-${demoUsers.length + 1}-${Date.now().toString(36)}`,
+      email,
+      nom: input.nom,
+      role: input.role,
+      actif: true,
+      creeLe: new Date().toISOString(),
+      passwordHash: input.passwordHash,
+    };
+    demoUsers.push(user);
+    return publicUser(user);
+  },
+  updateUser: async (id, patch) => {
+    const u = demoUsers.find((x) => x.id === id);
+    if (!u) return null;
+    Object.assign(u, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)));
+    return publicUser(u);
+  },
+  touchLogin: async (id) => {
+    const u = demoUsers.find((x) => x.id === id);
+    if (u) u.derniereConnexion = new Date().toISOString();
+  },
+  recordAudit: async (entry) => {
+    demoAudit.unshift(entry);
+    demoAudit.splice(1000);
+  },
+  getAudit: async (filter = {}) =>
+    demoAudit
+      .filter((e) => !filter.utilisateurId || e.utilisateurId === filter.utilisateurId)
+      .filter((e) => !filter.action || e.action === filter.action)
+      .slice(0, filter.limit ?? 200),
   async withLock(name, work) {
     if (demoLocks.has(name)) return null;
     demoLocks.add(name);

@@ -398,10 +398,13 @@ export const store = {
     actionId: string,
     decision: "approved" | "rejected",
     edits?: { objet?: string; corps?: string },
+    decidePar?: string,
   ) {
     const action = agentActions.find((a) => a.id === actionId);
     if (!action || !action.requiresHitl || action.hitlStatus !== "pending") return null;
     action.hitlStatus = decision;
+    action.decidePar = decidePar;
+    action.decideLe = new Date().toISOString();
     if (decision === "approved" && action.email) {
       action.email = { ...action.email, ...cleanEdits(edits) };
     }

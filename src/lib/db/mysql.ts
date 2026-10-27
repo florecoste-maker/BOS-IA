@@ -13,11 +13,13 @@ import type {
   Agent,
   AgentAction,
   AgentRunLog,
+  AuditEntry,
   EmailDraft,
   Invoice,
   Learner,
   OpcoDossier,
   TrainingSession,
+  User,
 } from "@/lib/types";
 import type { Repository } from "@/lib/data";
 import { getDatabaseConfig, type DatabaseConfig } from "./config";
@@ -106,6 +108,28 @@ export const SCHEMA = [
     model VARCHAR(128) NULL,
     INDEX idx_bos_agent_runs_debut (debut)
   ) DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS bos_users (
+    id VARCHAR(64) PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    nom VARCHAR(255) NOT NULL,
+    role VARCHAR(16) NOT NULL,
+    actif TINYINT(1) NOT NULL DEFAULT 1,
+    password_hash VARCHAR(255) NOT NULL,
+    cree_le DATETIME(3) NOT NULL,
+    derniere_connexion DATETIME(3) NULL
+  ) DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS bos_audit (
+    id VARCHAR(64) PRIMARY KEY,
+    le DATETIME(3) NOT NULL,
+    utilisateur_id VARCHAR(64) NOT NULL,
+    utilisateur VARCHAR(255) NOT NULL,
+    action VARCHAR(64) NOT NULL,
+    objet VARCHAR(255) NOT NULL,
+    details TEXT NULL,
+    ip VARCHAR(64) NULL,
+    INDEX idx_bos_audit_le (le),
+    INDEX idx_bos_audit_user (utilisateur_id)
+  ) DEFAULT CHARSET=utf8mb4`,
 ];
 
 /**
@@ -123,6 +147,8 @@ export const MIGRATIONS: Array<{ table: string; column: string; ddl: string }> =
   { table: "bos_agent_actions", column: "exec_statut", ddl: "VARCHAR(16) NULL" },
   { table: "bos_agent_actions", column: "exec_le", ddl: "DATETIME(3) NULL" },
   { table: "bos_agent_actions", column: "exec_message", ddl: "TEXT NULL" },
+  { table: "bos_agent_actions", column: "decide_par", ddl: "VARCHAR(255) NULL" },
+  { table: "bos_agent_actions", column: "decide_le", ddl: "DATETIME(3) NULL" },
 ];
 
 async function migrate(pool: Pool) {
@@ -371,6 +397,8 @@ function toAction(r: Row): AgentAction {
           },
         }
       : {}),
+    ...(r.decide_par ? { decidePar: String(r.decide_par) } : {}),
+    ...(r.decide_le ? { decideLe: fromSqlDateTime(String(r.decide_le)) } : {}),
     ...(r.exec_statut
       ? {
           execution: {
@@ -380,6 +408,31 @@ function toAction(r: Row): AgentAction {
           },
         }
       : {}),
+  };
+}
+
+function toUser(r: Row): User {
+  return {
+    id: String(r.id),
+    email: String(r.email),
+    nom: String(r.nom),
+    role: r.role as User["role"],
+    actif: Boolean(Number(r.actif)),
+    creeLe: fromSqlDateTime(String(r.cree_le)),
+    derniereConnexion: r.derniere_connexion ? fromSqlDateTime(String(r.derniere_connexion)) : undefined,
+  };
+}
+
+function toAudit(r: Row): AuditEntry {
+  return {
+    id: String(r.id),
+    le: fromSqlDateTime(String(r.le)),
+    utilisateurId: String(r.utilisateur_id),
+    utilisateur: String(r.utilisateur),
+    action: String(r.action),
+    objet: String(r.objet),
+    details: r.details == null ? undefined : String(r.details),
+    ip: r.ip == null ? undefined : String(r.ip),
   };
 }
 
@@ -519,7 +572,7 @@ export const mysqlRepository: Repository = {
     return rows[0] ?? null;
   },
 
-  resolveHitl(actionId, decision, edits) {
+  resolveHitl(actionId, decision, edits, decidePar) {
     return transaction(async (conn) => {
       const actions = await select(
         "SELECT * FROM bos_agent_actions WHERE id = ? FOR UPDATE",
@@ -531,12 +584,22 @@ export const mysqlRepository: Repository = {
       // Une décision ne se prend qu'une fois : pas de double envoi sur double clic.
       if (!action || !action.requiresHitl || action.hitlStatus !== "pending") return null;
       const changes = decision === "approved" && action.email ? cleanEdits(edits) : {};
+      const decideLe = new Date().toISOString();
       await conn.execute(
-        `UPDATE bos_agent_actions SET hitl_status = ?,
+        `UPDATE bos_agent_actions SET hitl_status = ?, decide_par = ?, decide_le = ?,
            email_objet = COALESCE(?, email_objet), email_corps = COALESCE(?, email_corps)
          WHERE id = ?`,
-        [decision, changes.objet ?? null, changes.corps ?? null, actionId],
+        [
+          decision,
+          decidePar ?? null,
+          toSqlDateTime(decideLe),
+          changes.objet ?? null,
+          changes.corps ?? null,
+          actionId,
+        ],
       );
+      action.decidePar = decidePar;
+      action.decideLe = decideLe;
       if (action.email) action.email = { ...action.email, ...changes };
       await conn.execute(
         `UPDATE bos_agents SET status = ?, derniere_action = ?
@@ -637,6 +700,95 @@ export const mysqlRepository: Repository = {
       );
       return { agentId, model, resume: proposal.resume, actions: created };
     });
+  },
+
+  listUsers: () => select("SELECT * FROM bos_users ORDER BY nom", toUser),
+
+  async findUserById(id) {
+    const rows = await select("SELECT * FROM bos_users WHERE id = ?", toUser, [id]);
+    return rows[0] ?? null;
+  },
+
+  async findUserForLogin(email) {
+    const [rows] = await (await db()).query<Row[]>("SELECT * FROM bos_users WHERE email = ?", [
+      email.toLowerCase(),
+    ]);
+    return rows[0] ? { user: toUser(rows[0]), passwordHash: String(rows[0].password_hash) } : null;
+  },
+
+  async createUser(input) {
+    const id = `usr-${randomUUID()}`;
+    try {
+      await (await db()).execute(
+        `INSERT INTO bos_users (id, email, nom, role, actif, password_hash, cree_le)
+         VALUES (?, ?, ?, ?, 1, ?, ?)`,
+        [id, input.email.toLowerCase(), input.nom, input.role, input.passwordHash, toSqlDateTime(new Date().toISOString())],
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code === "ER_DUP_ENTRY") return null;
+      throw error;
+    }
+    return this.findUserById(id);
+  },
+
+  async updateUser(id, patch) {
+    const columns: Record<string, unknown> = {
+      nom: patch.nom,
+      role: patch.role,
+      actif: patch.actif === undefined ? undefined : patch.actif ? 1 : 0,
+      password_hash: patch.passwordHash,
+    };
+    const set = Object.entries(columns).filter(([, v]) => v !== undefined);
+    if (set.length) {
+      await (await db()).execute(
+        `UPDATE bos_users SET ${set.map(([c]) => `${c} = ?`).join(", ")} WHERE id = ?`,
+        [...set.map(([, v]) => v as string | number), id],
+      );
+    }
+    return this.findUserById(id);
+  },
+
+  async touchLogin(id) {
+    await (await db()).execute("UPDATE bos_users SET derniere_connexion = ? WHERE id = ?", [
+      toSqlDateTime(new Date().toISOString()),
+      id,
+    ]);
+  },
+
+  async recordAudit(entry) {
+    await (await db()).execute(
+      `INSERT INTO bos_audit (id, le, utilisateur_id, utilisateur, action, objet, details, ip)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        entry.id,
+        toSqlDateTime(entry.le),
+        entry.utilisateurId,
+        entry.utilisateur.slice(0, 255),
+        entry.action.slice(0, 64),
+        entry.objet.slice(0, 255),
+        entry.details?.slice(0, 4000) ?? null,
+        entry.ip?.slice(0, 64) ?? null,
+      ],
+    );
+  },
+
+  getAudit(filter = {}) {
+    const where: string[] = [];
+    const params: Array<string | number> = [];
+    if (filter.utilisateurId) {
+      where.push("utilisateur_id = ?");
+      params.push(filter.utilisateurId);
+    }
+    if (filter.action) {
+      where.push("action = ?");
+      params.push(filter.action);
+    }
+    params.push(Math.max(1, Math.min(5000, Math.floor(filter.limit ?? 200))));
+    return select(
+      `SELECT * FROM bos_audit ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY le DESC LIMIT ?`,
+      toAudit,
+      params,
+    );
   },
 
   async logAgentRun(run) {

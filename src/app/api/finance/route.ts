@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { audit } from "@/lib/audit";
 import { getRepository } from "@/lib/data";
+import { getActor } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +31,7 @@ export async function PATCH(request: Request) {
     if (!invoice) {
       return NextResponse.json({ error: "Facture introuvable" }, { status: 404 });
     }
+    await audit(await getActor(), "facture_payee", invoice.numero, { details: { payeeLe: date }, request });
     return NextResponse.json({ invoice });
   }
 
@@ -37,6 +40,7 @@ export async function PATCH(request: Request) {
     if (!dossier) {
       return NextResponse.json({ error: "Dossier introuvable" }, { status: 404 });
     }
+    await audit(await getActor(), "dossier_transmis", dossier.reference, { request });
     return NextResponse.json({ dossier });
   }
 
