@@ -4,7 +4,8 @@ name: Surveillance
 # Prérequis : secret de dépôt BOS_CRON_SECRET (même valeur que dans hPanel).
 # Un bilan en erreur (base injoignable, SMTP refusé…) fait échouer ce workflow :
 # GitHub prévient alors le propriétaire du dépôt par e-mail, même si le site ne
-# peut plus rien envoyer lui-même. Sans secret, le workflow ne fait rien.
+# peut plus rien envoyer lui-même. Sans secret : seule la sonde publique est
+# vérifiée (le site répond, et c'est bien BOS-IA).
 
 on:
   schedule:
@@ -29,10 +30,25 @@ jobs:
       BOS_APP_URL: ${{ vars.BOS_APP_URL || 'https://app.jamaliance.com' }}
       TACHE: ${{ github.event.schedule == '37 2 * * 0' && 'sauvegarde' || inputs.tache || 'sante' }}
     steps:
-      - name: Bilan de santé ou sauvegarde
+      - name: Le site répond (sonde publique)
+        run: |
+          status=$(curl -sS -o publique.json -w "%{http_code}" --max-time 30 \
+            --retry 2 --retry-delay 15 --retry-all-errors "$BOS_APP_URL/api/health" || true)
+          cat publique.json 2>/dev/null; echo
+          if [ "$status" != "200" ]; then
+            echo "::error::$BOS_APP_URL/api/health répond HTTP $status (site arrêté, mal déployé ou domaine mal pointé)"
+            exit 1
+          fi
+          if ! grep -q '"service":"bos-ia"' publique.json; then
+            echo "::error::$BOS_APP_URL répond, mais ce n'est pas BOS-IA (page Hostinger par défaut ou mauvais site sur le sous-domaine ?)"
+            exit 1
+          fi
+          echo "::notice::$BOS_APP_URL répond : BOS-IA en ligne."
+
+      - name: Bilan complet ou sauvegarde
         run: |
           if [ -z "$BOS_CRON_SECRET" ]; then
-            echo "::notice::Secret BOS_CRON_SECRET absent : surveillance inactive."
+            echo "::warning::Secret BOS_CRON_SECRET absent (Settings → Secrets and variables → Actions → Repository secrets) : bilan complet et sauvegarde non effectués."
             exit 0
           fi
           if [ "$TACHE" = "sauvegarde" ]; then
@@ -44,6 +60,10 @@ jobs:
               -H "Authorization: Bearer $BOS_CRON_SECRET" "$BOS_APP_URL/api/health?complet=1")
           fi
           cat reponse.json; echo
+          if [ "$status" = "401" ]; then
+            echo "::error::Secret refusé : BOS_CRON_SECRET n'a pas la même valeur dans GitHub et dans hPanel"
+            exit 1
+          fi
           if [ "$status" != "200" ]; then
             echo "::error::$TACHE : réponse HTTP $status de $BOS_APP_URL"
             exit 1

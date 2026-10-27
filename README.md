@@ -291,6 +291,10 @@ bilan de santé quotidien `GET /api/health?complet=1` (base, Claude, SMTP,
 dernier passage planifié, alertes) et sauvegarde hebdomadaire `POST /api/sauvegarde`.
 Un service en erreur fait échouer le workflow et **GitHub prévient le propriétaire
 du dépôt par e-mail** — y compris quand le site ne peut plus rien envoyer.
+Même sans secret, le workflow vérifie la sonde publique `GET /api/health` : le
+site répond et c'est bien BOS-IA (et non une page Hostinger par défaut). Un secret
+de valeur différente de hPanel est signalé (« Secret refusé »). Lancement à la
+main : onglet Actions → Surveillance → Run workflow.
 
 Hostinger sauvegarde aussi les bases MySQL (hPanel → Sauvegardes) : vérifier la
 fréquence incluse dans l'offre.
