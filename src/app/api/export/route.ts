@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { backupFileName, buildBackup } from "@/lib/backup";
+import { audit } from "@/lib/audit";
 import { getRepository } from "@/lib/data";
+import { getActor } from "@/lib/session";
 import { exportCsv } from "@/lib/import/export";
 import { IMPORT_KINDS, type ImportKind } from "@/lib/import/schema";
 
@@ -15,12 +17,14 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const repo = await getRepository();
   const date = new Date().toISOString().slice(0, 10);
+  const actor = await getActor();
 
   if (params.get("format") === "csv") {
     const kind = params.get("type") as ImportKind;
     if (!IMPORT_KINDS.some((k) => k.kind === kind)) {
       return NextResponse.json({ error: "Type inconnu" }, { status: 400 });
     }
+    await audit(actor, "export", `CSV ${kind}`, { request });
     const [sessions, learners, dossiers, invoices] = await Promise.all([
       repo.getSessions(),
       repo.getLearners(),
@@ -36,6 +40,7 @@ export async function GET(request: Request) {
     });
   }
 
+  await audit(actor, "export", "sauvegarde complète (JSON)", { request });
   const backup = await buildBackup(repo);
   return new Response(JSON.stringify(backup, null, 1), {
     headers: {

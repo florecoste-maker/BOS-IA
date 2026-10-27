@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { ActionError, decideAction, retryAction, withRecipients } from "@/lib/actions/execute";
+import { audit } from "@/lib/audit";
 import { getRepository } from "@/lib/data";
+import { getActor } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -27,14 +29,38 @@ export async function PATCH(request: Request) {
   }
 
   const repo = await getRepository();
+  const actor = await getActor();
   try {
     if (body.decision === "renvoyer") {
-      await retryAction(repo, body.actionId);
-    } else {
-      await decideAction(repo, body.actionId, body.decision!, {
-        objet: typeof body.objet === "string" ? body.objet : undefined,
-        corps: typeof body.corps === "string" ? body.corps : undefined,
+      const execution = await retryAction(repo, body.actionId);
+      await audit(actor, "email_renvoye", body.actionId, {
+        details: { envoi: execution.statut, message: execution.message },
+        request,
       });
+    } else {
+      const action = await decideAction(
+        repo,
+        body.actionId,
+        body.decision!,
+        {
+          objet: typeof body.objet === "string" ? body.objet : undefined,
+          corps: typeof body.corps === "string" ? body.corps : undefined,
+        },
+        actor?.nom,
+      );
+      await audit(
+        actor,
+        body.decision === "approved" ? "hitl_approuve" : "hitl_refuse",
+        action.email ? `E-mail « ${action.email.objet} »` : action.type,
+        {
+          details: {
+            action: action.id,
+            agent: action.agentId,
+            ...(action.execution ? { envoi: action.execution.statut, message: action.execution.message } : {}),
+          },
+          request,
+        },
+      );
     }
   } catch (error) {
     if (error instanceof ActionError) {

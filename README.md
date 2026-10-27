@@ -25,6 +25,7 @@
 | Agents planifiés (analyse quotidienne) | ✅ Prêt (`BOS_CRON_SECRET` + base + clé Claude) |
 | Envoi des e-mails approuvés (SMTP) | ✅ Prêt (`SMTP_*` requis, sinon envoi manuel) |
 | Sauvegardes, alertes et bilan de santé | ✅ Prêt (`BOS_ALERTES_EMAIL` + SMTP + `BOS_CRON_SECRET`) |
+| Comptes nominatifs et journal des actions | ✅ Prêt (base MySQL requise pour les conserver) |
 | CI GitHub (lint, tests, build, test MySQL 8) | ✅ Prêt |
 | Config Hostinger `standalone` + `.env.example` | ✅ Prêt |
 | Déploiement sur `app.jamaliance.com` | ✅ En ligne |
@@ -164,6 +165,29 @@ Test d'intégration local : `BOS_TEST_DATABASE_URL=mysql://… npm test`
 (**supprime les tables `bos_*` de la base indiquée** ; utiliser une base de test).
 
 Ne jamais pointer ce dépôt sur la racine jamaliance.com.
+
+## Comptes et journal des actions
+
+Chaque personne a son compte (e-mail + mot de passe, haché avec scrypt) :
+- **membre** : travail courant (validations, finance, import, exports) ;
+- **administrateur** : en plus, `/app/utilisateurs` (comptes) et `/app/journal`.
+
+Premier démarrage : se connecter **sans e-mail** avec `BOS_ADMIN_PASSWORD` (compte
+de secours), créer son compte administrateur dans « Comptes », puis se reconnecter
+avec son e-mail. Le compte de secours reste utilisable en dernier recours ; chaque
+usage est journalisé et signalé par alerte ; `BOS_SECOURS_DESACTIVE=1` le coupe.
+
+Garde-fous : impossible de désactiver ou de rétrograder son propre compte, ou le
+dernier administrateur actif ; un compte désactivé perd l'accès à sa requête
+suivante (le compte est relu en base à chaque requête, et le rôle vient de la base,
+pas du jeton) ; 5 échecs de connexion par adresse IP ou par compte → 15 min de blocage.
+
+Le journal enregistre qui, quoi, quand et l'adresse IP : connexions (réussies,
+refusées, de secours), décisions sur les propositions des agents (l'auteur s'affiche
+aussi dans « Décisions récentes »), envois et renvois d'e-mails, analyses lancées,
+imports, exports, paiements, dossiers, actions sur les apprenants, gestion des
+comptes. Export CSV pour Qualiopi / RGPD (cellules protégées contre l'injection de
+formules Excel).
 
 ## Sécurité
 

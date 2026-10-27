@@ -357,4 +357,44 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
     metrics = await repo.getMetrics();
     assert.equal(metrics.delaiPaiementBase, 3, "payée aujourd'hui : comptée dans les 12 mois");
   });
+
+  it("gère les comptes, le journal et l'auteur des décisions", async () => {
+    await conn.query("ALTER TABLE bos_agent_actions DROP COLUMN decide_par, DROP COLUMN decide_le");
+    const state = (globalThis as { __bosDb?: { pool: { end(): Promise<void> } } }).__bosDb;
+    await state?.pool.end();
+    (globalThis as { __bosDb?: unknown }).__bosDb = undefined;
+
+    const user = await repo.createUser({ email: "Admin@Jamaliance.com", nom: "Admin Test", role: "admin", passwordHash: "scrypt$h" });
+    assert.equal(user?.email, "admin@jamaliance.com");
+    assert.equal(user?.actif, true);
+    assert.equal(await repo.createUser({ email: "admin@jamaliance.com", nom: "Doublon", role: "membre", passwordHash: "x" }), null);
+    const login = await repo.findUserForLogin("ADMIN@jamaliance.com");
+    assert.equal(login?.passwordHash, "scrypt$h");
+    assert.equal(JSON.stringify(await repo.listUsers()).includes("scrypt"), false, "le hash ne sort pas");
+
+    const updated = await repo.updateUser(user!.id, { nom: "Admin Renommé", actif: false, passwordHash: "scrypt$h2" });
+    assert.equal(updated?.nom, "Admin Renommé");
+    assert.equal(updated?.actif, false);
+    assert.equal((await repo.findUserForLogin("admin@jamaliance.com"))?.passwordHash, "scrypt$h2");
+    await repo.touchLogin(user!.id);
+    assert.ok((await repo.findUserById(user!.id))?.derniereConnexion);
+
+    await repo.recordAudit({ id: "aud-1", le: "2026-10-27T08:00:00.000Z", utilisateurId: user!.id, utilisateur: "Admin", action: "connexion", objet: "admin@jamaliance.com", ip: "203.0.113.5" });
+    await repo.recordAudit({ id: "aud-2", le: "2026-10-27T09:00:00.000Z", utilisateurId: "anonyme", utilisateur: "Anonyme", action: "connexion_echouee", objet: "x", details: '{"a":1}' });
+    assert.deepEqual((await repo.getAudit()).map((e) => e.id).slice(0, 2), ["aud-2", "aud-1"]);
+    assert.deepEqual((await repo.getAudit({ utilisateurId: user!.id })).map((e) => e.id), ["aud-1"]);
+    assert.deepEqual((await repo.getAudit({ action: "connexion_echouee" }))[0].details, '{"a":1}');
+    assert.equal((await repo.getAudit({ action: "connexion" }))[0].ip, "203.0.113.5");
+
+    const run = await repo.recordAgentRun(
+      "agt-001",
+      { resume: "r", actions: [{ type: "t", description: "d", requiresHitl: true }] },
+      "m",
+    );
+    const decided = await repo.resolveHitl(run!.actions[0].id, "approved", undefined, "Camille Martin");
+    assert.equal(decided?.decidePar, "Camille Martin");
+    const stored = (await repo.getAgentActions()).find((a) => a.id === run!.actions[0].id)!;
+    assert.equal(stored.decidePar, "Camille Martin");
+    assert.ok(stored.decideLe);
+  });
 });

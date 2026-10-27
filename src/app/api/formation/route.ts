@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { audit } from "@/lib/audit";
 import { getRepository } from "@/lib/data";
+import { getActor } from "@/lib/session";
 import type { LearnerStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -18,12 +20,17 @@ export async function PATCH(request: Request) {
     score?: number;
   };
   const repo = await getRepository();
+  const actor = await getActor();
 
   if (body.action === "status" && body.status) {
     const learner = await repo.updateLearnerStatus(body.id, body.status);
     if (!learner) {
       return NextResponse.json({ error: "Apprenant introuvable" }, { status: 404 });
     }
+    await audit(actor, "apprenant_statut", `${learner.prenom} ${learner.nom}`, {
+      details: { statut: body.status },
+      request,
+    });
     return NextResponse.json({ learner });
   }
 
@@ -32,6 +39,10 @@ export async function PATCH(request: Request) {
     if (!learner) {
       return NextResponse.json({ error: "Apprenant introuvable" }, { status: 404 });
     }
+    await audit(actor, "apprenant_validation", `${learner.prenom} ${learner.nom}`, {
+      details: { score: body.score ?? 0 },
+      request,
+    });
     return NextResponse.json({ learner });
   }
 
@@ -40,6 +51,7 @@ export async function PATCH(request: Request) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
+    await audit(actor, "proof_to_cash", result.invoice.numero, { details: { apprenant: body.id }, request });
     return NextResponse.json(result);
   }
 

@@ -50,22 +50,48 @@ export function checkPassword(candidate: string) {
   return safeEqual(candidate, password);
 }
 
-export function createSessionToken(now = Date.now()) {
+/** Identité portée par la session (signée, non modifiable par le navigateur). */
+export interface SessionIdentity {
+  /** Id du compte, ou « secours » pour le mot de passe partagé BOS_ADMIN_PASSWORD. */
+  uid: string;
+  role: "admin" | "membre";
+  nom: string;
+}
+
+export const SECOURS: SessionIdentity = { uid: "secours", role: "admin", nom: "Compte de secours" };
+
+export function createSessionToken(identity: SessionIdentity = SECOURS, now = Date.now()) {
   const { secret, configured } = getAuthConfig();
   if (!configured || !secret) throw new Error("Authentification non configurée");
-  const expiresAt = Math.floor(now / 1000) + SESSION_TTL_SECONDS;
-  const payload = String(expiresAt);
+  const exp = Math.floor(now / 1000) + SESSION_TTL_SECONDS;
+  const payload = Buffer.from(
+    JSON.stringify({ u: identity.uid, r: identity.role, n: identity.nom, exp }),
+    "utf8",
+  ).toString("base64url");
   return `${payload}.${sign(payload, secret)}`;
 }
 
-export function verifySessionToken(token: string | undefined, now = Date.now()) {
+/** Identité de la session si le jeton est authentique et non expiré, sinon null. */
+export function verifySessionToken(token: string | undefined, now = Date.now()): SessionIdentity | null {
   const { secret, configured } = getAuthConfig();
-  if (!configured || !secret || !token) return false;
+  if (!configured || !secret || !token) return null;
   const [payload, signature, extra] = token.split(".");
-  if (!payload || !signature || extra !== undefined) return false;
-  if (!safeEqual(signature, sign(payload, secret))) return false;
-  const expiresAt = Number(payload);
-  return Number.isInteger(expiresAt) && expiresAt > Math.floor(now / 1000);
+  if (!payload || !signature || extra !== undefined) return null;
+  if (!safeEqual(signature, sign(payload, secret))) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      u?: unknown;
+      r?: unknown;
+      n?: unknown;
+      exp?: unknown;
+    };
+    if (typeof data.exp !== "number" || data.exp <= Math.floor(now / 1000)) return null;
+    if (typeof data.u !== "string" || typeof data.n !== "string") return null;
+    if (data.r !== "admin" && data.r !== "membre") return null;
+    return { uid: data.u, role: data.r, nom: data.n };
+  } catch {
+    return null;
+  }
 }
 
 /** Limite les essais de mot de passe : 5 échecs par IP et par quart d'heure. */

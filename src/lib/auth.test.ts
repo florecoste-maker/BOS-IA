@@ -41,13 +41,20 @@ describe("Accès cockpit BOS-IA", () => {
 
   it("accepte une session valide et rejette une session falsifiée ou expirée", () => {
     const now = Date.now();
-    const token = createSessionToken(now);
-    assert.equal(verifySessionToken(token, now), true);
-    const [payload, signature] = token.split(".");
-    assert.equal(verifySessionToken(`${Number(payload) + 3600}.${signature}`, now), false);
-    assert.equal(verifySessionToken(token, now + 13 * 60 * 60 * 1000), false);
+    const identity = { uid: "usr-1", role: "membre" as const, nom: "Camille Martin" };
+    const token = createSessionToken(identity, now);
+    assert.deepEqual(verifySessionToken(token, now), identity);
+    // Élévation de rôle en modifiant le jeton : signature invalide.
+    const [, signature] = token.split(".");
+    const forged = Buffer.from(
+      JSON.stringify({ u: "usr-1", r: "admin", n: "Camille Martin", exp: Math.floor(now / 1000) + 3600 }),
+    ).toString("base64url");
+    assert.equal(verifySessionToken(`${forged}.${signature}`, now), null);
+    assert.equal(verifySessionToken(token, now + 13 * 60 * 60 * 1000), null);
+    assert.equal(verifySessionToken("1234567890.abc", now), null, "ancien format refusé");
+    assert.deepEqual(verifySessionToken(createSessionToken(undefined, now), now)?.uid, "secours");
     process.env.BOS_SESSION_SECRET = "t".repeat(40);
-    assert.equal(verifySessionToken(token, now), false);
+    assert.equal(verifySessionToken(token, now), null);
   });
 
   it("bloque après 5 échecs", () => {

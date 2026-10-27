@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/agents/schedule";
 import { getAlertAddress, sendAlert } from "@/lib/alerts";
+import { SYSTEM_ACTOR, audit } from "@/lib/audit";
 import { backupFileName, buildBackup, gzipBackup } from "@/lib/backup";
 import { getRepository } from "@/lib/data";
 import { isDatabaseConfigured } from "@/lib/db/config";
@@ -43,5 +44,6 @@ export async function POST(request: Request) {
     [{ filename: `${backupFileName()}.gz`, content: gzipBackup(backup), contentType: "application/gzip" }],
   );
   if (!result.sent) return NextResponse.json({ error: result.reason }, { status: 502 });
+  await audit(SYSTEM_ACTOR, "export", "sauvegarde hebdomadaire par e-mail", { details: t, request });
   return NextResponse.json({ ok: true, totaux: t });
 }

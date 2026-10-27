@@ -13,8 +13,11 @@ const links = [
   { href: "/app/integrations", label: "Connexions" },
 ];
 
-export function AppNav() {
+export function AppNav({ user }: { user?: { nom: string; admin: boolean } | null }) {
   const pathname = usePathname();
+  const all = user?.admin
+    ? [...links, { href: "/app/utilisateurs", label: "Comptes" }, { href: "/app/journal", label: "Journal" }]
+    : links;
 
   return (
     <header className="sticky top-0 z-40 border-b border-line/80 bg-surface/85 backdrop-blur-md">
@@ -29,7 +32,7 @@ export function AppNav() {
           </span>
         </Link>
         <nav className="flex flex-wrap items-center gap-1 text-sm font-medium text-ink-muted">
-          {links.map((link) => {
+          {all.map((link) => {
             const active = link.exact
               ? pathname === link.href
               : pathname.startsWith(link.href);
@@ -55,6 +58,15 @@ export function AppNav() {
           >
             Site public
           </a>
+          {user ? (
+            <Link
+              href="/app/compte"
+              className="rounded-md px-3 py-1.5 text-ink transition-colors hover:bg-bg-deep"
+              title="Mon compte"
+            >
+              {user.nom}
+            </Link>
+          ) : null}
           <form method="post" action="/api/auth/logout">
             <button
               type="submit"

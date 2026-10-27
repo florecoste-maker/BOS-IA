@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, getAuthConfig, verifySessionToken } from "@/lib/auth";
+import { resolveActor } from "@/lib/session";
 
 /**
  * Routes ouvertes sans session : connexion, sonde de santé Hostinger, et
@@ -13,7 +14,10 @@ const PUBLIC_API = [
   "/api/sauvegarde",
 ];
 
-export function proxy(request: NextRequest) {
+/** Réservé aux administrateurs : comptes et journal. */
+const ADMIN_PATHS = ["/app/utilisateurs", "/app/journal", "/api/utilisateurs", "/api/journal"];
+
+export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   if (PUBLIC_API.includes(pathname)) return NextResponse.next();
 
@@ -35,7 +39,19 @@ export function proxy(request: NextRequest) {
   }
 
   const token = request.cookies.get(SESSION_COOKIE)?.value;
-  if (verifySessionToken(token)) return NextResponse.next();
+  // Jeton signé puis compte relu en base à chaque requête : un compte désactivé
+  // perd l'accès immédiatement (lecture par clé primaire, sans cache).
+  const actor = await resolveActor(verifySessionToken(token));
+  if (actor) {
+    if (actor.role !== "admin" && ADMIN_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      if (isApi) return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
+      const home = request.nextUrl.clone();
+      home.pathname = "/app";
+      home.search = "";
+      return NextResponse.redirect(home);
+    }
+    return NextResponse.next();
+  }
 
   if (isApi) {
     return NextResponse.json({ error: "Authentification requise" }, { status: 401 });
