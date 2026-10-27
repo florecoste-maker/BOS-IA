@@ -7,6 +7,7 @@ import {
   getScheduleConfig,
   isCronAuthorized,
 } from "@/lib/agents/schedule";
+import { sendRunReport } from "@/lib/alerts";
 import { getRepository } from "@/lib/data";
 import { isDatabaseConfigured } from "@/lib/db/config";
 
@@ -48,7 +49,16 @@ export async function POST(request: Request) {
   }
 
   const repo = await getRepository();
-  const execute = () => executeScheduledRun(repo, (agentId) => runAgent(agentId, "planifie"));
+  // Exécution puis rapport à l'équipe (échecs, validations en attente).
+  const execute = async () => {
+    const results = await executeScheduledRun(repo, (agentId) => runAgent(agentId, "planifie"));
+    if (results) {
+      await sendRunReport(repo, results).catch((error) =>
+        console.error("Rapport des agents planifiés non envoyé", error),
+      );
+    }
+    return results;
+  };
 
   if (new URL(request.url).searchParams.get("attendre") === "1") {
     const results = await execute();

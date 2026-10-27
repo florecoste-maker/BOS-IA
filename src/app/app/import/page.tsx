@@ -70,6 +70,39 @@ export default function ImportPage() {
         ))}
       </section>
       <p className="mt-6 text-xs text-ink-muted">* colonne obligatoire</p>
+
+      <section className="mt-14 max-w-3xl border-t border-line pt-8 text-sm">
+        <h2 className="font-display text-xl font-semibold">Exporter et sauvegarder</h2>
+        <p className="mt-2 text-ink-muted">
+          Les exports CSV ont exactement le format de l&apos;import : en cas de besoin, ils se
+          réimportent tels quels pour restaurer les données. La sauvegarde complète (JSON)
+          contient aussi les agents et leur journal récent.
+        </p>
+        <ul className="mt-4 flex flex-wrap gap-3">
+          <li>
+            <a
+              href="/api/export?format=json"
+              className="inline-block bg-brand px-3 py-1.5 font-semibold text-white hover:bg-brand-deep"
+            >
+              Sauvegarde complète (JSON)
+            </a>
+          </li>
+          {IMPORT_KINDS.map(({ kind, label }) => (
+            <li key={kind}>
+              <a
+                href={`/api/export?format=csv&type=${kind}`}
+                className="inline-block border border-line px-3 py-1.5 font-semibold hover:border-brand/40"
+              >
+                {label} (CSV)
+              </a>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 text-xs text-ink-muted">
+          Ces fichiers contiennent des données personnelles : conservez-les dans un espace
+          protégé. Une sauvegarde hebdomadaire peut aussi partir par e-mail (voir Connexions).
+        </p>
+      </section>
     </>
   );
 }

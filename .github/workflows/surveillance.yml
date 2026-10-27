@@ -1,0 +1,50 @@
+name: Surveillance
+
+# Bilan de santé quotidien et sauvegarde hebdomadaire de app.jamaliance.com.
+# Prérequis : secret de dépôt BOS_CRON_SECRET (même valeur que dans hPanel).
+# Un bilan en erreur (base injoignable, SMTP refusé…) fait échouer ce workflow :
+# GitHub prévient alors le propriétaire du dépôt par e-mail, même si le site ne
+# peut plus rien envoyer lui-même. Sans secret, le workflow ne fait rien.
+
+on:
+  schedule:
+    # Bilan de santé : tous les jours à 05:43 UTC
+    - cron: "43 5 * * *"
+    # Sauvegarde par e-mail : le dimanche à 02:37 UTC
+    - cron: "37 2 * * 0"
+  workflow_dispatch:
+    inputs:
+      tache:
+        description: "sante ou sauvegarde"
+        default: sante
+
+permissions: {}
+
+jobs:
+  surveiller:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BOS_CRON_SECRET: ${{ secrets.BOS_CRON_SECRET }}
+      BOS_APP_URL: ${{ vars.BOS_APP_URL || 'https://app.jamaliance.com' }}
+      TACHE: ${{ github.event.schedule == '37 2 * * 0' && 'sauvegarde' || inputs.tache || 'sante' }}
+    steps:
+      - name: Bilan de santé ou sauvegarde
+        run: |
+          if [ -z "$BOS_CRON_SECRET" ]; then
+            echo "::notice::Secret BOS_CRON_SECRET absent : surveillance inactive."
+            exit 0
+          fi
+          if [ "$TACHE" = "sauvegarde" ]; then
+            status=$(curl -sS -o reponse.json -w "%{http_code}" -X POST --max-time 120 \
+              -H "Authorization: Bearer $BOS_CRON_SECRET" "$BOS_APP_URL/api/sauvegarde")
+          else
+            status=$(curl -sS -o reponse.json -w "%{http_code}" --max-time 60 \
+              --retry 2 --retry-delay 15 --retry-all-errors \
+              -H "Authorization: Bearer $BOS_CRON_SECRET" "$BOS_APP_URL/api/health?complet=1")
+          fi
+          cat reponse.json; echo
+          if [ "$status" != "200" ]; then
+            echo "::error::$TACHE : réponse HTTP $status de $BOS_APP_URL"
+            exit 1
+          fi

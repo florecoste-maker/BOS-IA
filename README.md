@@ -24,6 +24,7 @@
 | Import CSV / Excel (`/app/import`) | ✅ Prêt (nécessite la base) |
 | Agents planifiés (analyse quotidienne) | ✅ Prêt (`BOS_CRON_SECRET` + base + clé Claude) |
 | Envoi des e-mails approuvés (SMTP) | ✅ Prêt (`SMTP_*` requis, sinon envoi manuel) |
+| Sauvegardes, alertes et bilan de santé | ✅ Prêt (`BOS_ALERTES_EMAIL` + SMTP + `BOS_CRON_SECRET`) |
 | CI GitHub (lint, tests, build, test MySQL 8) | ✅ Prêt |
 | Config Hostinger `standalone` + `.env.example` | ✅ Prêt |
 | Déploiement sur `app.jamaliance.com` | ✅ En ligne |
@@ -167,7 +168,8 @@ Ne jamais pointer ce dépôt sur la racine jamaliance.com.
 ## Sécurité
 
 - `src/proxy.ts` protège `/app/*` et `/api/*` ; seules `/api/health`,
-  `/api/auth/*` et `/api/agents/planifie` (protégée par son propre secret) sont publiques. Session signée HMAC-SHA256, cookie `httpOnly`,
+  `/api/auth/*`, `/api/agents/planifie` et `/api/sauvegarde` (protégées par leur
+  propre secret) sont publiques. Session signée HMAC-SHA256, cookie `httpOnly`,
   `secure`, `SameSite=Lax`, 12 h. 5 échecs de connexion par IP → blocage 15 min.
 - En-têtes HSTS, `X-Frame-Options: DENY`, `nosniff`, `noindex` sur tout le moteur.
 
@@ -204,6 +206,28 @@ Configuration (hPanel) : `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
 `SMTP_FROM` — voir `.env.example` pour Google Workspace et la messagerie Hostinger.
 `/app/integrations` → carte « E-mails (SMTP) » vérifie la connexion. Pour les
 relances de factures, importer les factures avec la colonne `email_client`.
+
+## Sauvegardes et alertes
+
+**Exports** (`/app/import` → « Exporter et sauvegarder », session requise) :
+sauvegarde complète JSON, et un CSV par type **au format exact de l'import**.
+Restauration : réimporter ces CSV dans l'ordre sessions → apprenants → dossiers →
+factures (testé : base vidée puis restaurée, indicateurs identiques).
+
+**Alertes** — `BOS_ALERTES_EMAIL` reçoit, par le SMTP configuré :
+- un rapport après chaque passage planifié, seulement s'il y a des échecs ou des
+  propositions en attente de validation ;
+- une alerte immédiate quand un e-mail approuvé ne part pas ;
+- chaque dimanche, la sauvegarde complète en pièce jointe (`.json.gz`).
+
+**Surveillance** — workflow GitHub « Surveillance » (même secret `BOS_CRON_SECRET`) :
+bilan de santé quotidien `GET /api/health?complet=1` (base, Claude, SMTP,
+dernier passage planifié, alertes) et sauvegarde hebdomadaire `POST /api/sauvegarde`.
+Un service en erreur fait échouer le workflow et **GitHub prévient le propriétaire
+du dépôt par e-mail** — y compris quand le site ne peut plus rien envoyer.
+
+Hostinger sauvegarde aussi les bases MySQL (hPanel → Sauvegardes) : vérifier la
+fréquence incluse dans l'offre.
 
 ## Agents planifiés
 
@@ -242,6 +266,9 @@ Mise en place :
 
 - `GET /api/health` — sonde publique de déploiement
 - `POST /api/agents/planifie` — déclencheur des agents planifiés (secret `BOS_CRON_SECRET`)
+- `GET /api/health?complet=1` — bilan de santé (secret `BOS_CRON_SECRET`)
+- `POST /api/sauvegarde` — sauvegarde par e-mail (secret `BOS_CRON_SECRET`)
+- `GET /api/export?format=json|csv&type=…` — exports (session)
 - `GET /api/integrations/status` — état Hostinger / TidyCal / agents IA (+ sonde live API)
 - `GET /api/integrations/tidycal?view=public|bookings|types|timeslots`
 - `POST /api/integrations/tidycal` — créer un créneau (types gratuits uniquement côté TidyCal)
