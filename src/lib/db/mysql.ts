@@ -10,6 +10,7 @@ import { store } from "@/lib/store";
 import type {
   Agent,
   AgentAction,
+  AgentRunLog,
   Invoice,
   Learner,
   OpcoDossier,
@@ -89,6 +90,18 @@ export const SCHEMA = [
     hitl_status VARCHAR(16) NULL,
     model VARCHAR(128) NULL,
     INDEX idx_bos_agent_actions_created (created_at)
+  ) DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS bos_agent_runs (
+    id VARCHAR(64) PRIMARY KEY,
+    agent_id VARCHAR(64) NOT NULL,
+    declencheur VARCHAR(16) NOT NULL,
+    debut DATETIME(3) NOT NULL,
+    fin DATETIME(3) NOT NULL,
+    statut VARCHAR(16) NOT NULL,
+    message TEXT NOT NULL,
+    actions INT NOT NULL DEFAULT 0,
+    model VARCHAR(128) NULL,
+    INDEX idx_bos_agent_runs_debut (debut)
   ) DEFAULT CHARSET=utf8mb4`,
 ];
 
@@ -309,6 +322,20 @@ function toAction(r: Row): AgentAction {
   };
 }
 
+function toRun(r: Row): AgentRunLog {
+  return {
+    id: String(r.id),
+    agentId: String(r.agent_id),
+    declencheur: r.declencheur as AgentRunLog["declencheur"],
+    debut: fromSqlDateTime(String(r.debut)),
+    fin: fromSqlDateTime(String(r.fin)),
+    statut: r.statut as AgentRunLog["statut"],
+    message: String(r.message),
+    actions: Number(r.actions),
+    model: r.model == null ? undefined : String(r.model),
+  };
+}
+
 /* ---------- lectures ---------- */
 
 async function select<T>(
@@ -492,6 +519,48 @@ export const mysqlRepository: Repository = {
       );
       return { agentId, model, resume: proposal.resume, actions: created };
     });
+  },
+
+  async logAgentRun(run) {
+    await (await db()).execute(
+      `INSERT INTO bos_agent_runs
+         (id, agent_id, declencheur, debut, fin, statut, message, actions, model)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        run.id,
+        run.agentId,
+        run.declencheur,
+        toSqlDateTime(run.debut),
+        toSqlDateTime(run.fin),
+        run.statut,
+        run.message.slice(0, 2000),
+        run.actions,
+        run.model ?? null,
+      ],
+    );
+  },
+
+  getAgentRuns: (limit = 50) =>
+    select(
+      "SELECT * FROM bos_agent_runs ORDER BY debut DESC LIMIT ?",
+      toRun,
+      [Math.max(1, Math.min(500, Math.floor(limit)))],
+    ),
+
+  /** Verrou MySQL nommé (GET_LOCK), tenu sur une connexion dédiée le temps du travail. */
+  async withLock(name, work) {
+    const conn = await (await db()).getConnection();
+    try {
+      const [rows] = await conn.query<Row[]>("SELECT GET_LOCK(?, 0) AS ok", [`bos:${name}`]);
+      if (Number(rows[0].ok) !== 1) return null;
+      try {
+        return { value: await work() };
+      } finally {
+        await conn.query("SELECT RELEASE_LOCK(?)", [`bos:${name}`]).catch(() => {});
+      }
+    } finally {
+      conn.release();
+    }
   },
 
   emitProofToCash(learnerId) {

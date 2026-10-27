@@ -10,7 +10,7 @@
     "postbuild": "node scripts/prepare-standalone.mjs",
     "start": "node server.js",
     "lint": "eslint",
-    "test": "tsx --test src/lib/store.test.ts src/lib/integrations/config.test.ts src/lib/auth.test.ts src/lib/agents/claude.test.ts src/lib/db/config.test.ts src/lib/db/mysql.test.ts src/lib/import/import.test.ts"
+    "test": "tsx --test src/lib/store.test.ts src/lib/integrations/config.test.ts src/lib/auth.test.ts src/lib/agents/claude.test.ts src/lib/agents/schedule.test.ts src/lib/db/config.test.ts src/lib/db/mysql.test.ts src/lib/import/import.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

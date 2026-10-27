@@ -6,6 +6,18 @@ export function formatDate(iso: string): string {
   }).format(new Date(iso));
 }
 
+/** Date et heure de Paris, ex. « 27 oct. 2026, 07:42 ». */
+export function formatDateTime(iso: string): string {
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Paris",
+  }).format(new Date(iso));
+}
+
 export function formatMoney(amount: number): string {
   return new Intl.NumberFormat("fr-FR", {
     style: "currency",

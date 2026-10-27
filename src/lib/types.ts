@@ -128,3 +128,16 @@ export interface DashboardMetrics {
   actionsHitl: number;
   pipelineCompletions: number;
 }
+
+/** Journal d'une exécution d'agent (manuelle ou planifiée). */
+export interface AgentRunLog {
+  id: string;
+  agentId: string;
+  declencheur: "manuel" | "planifie";
+  debut: string;
+  fin: string;
+  statut: "succes" | "echec" | "ignore";
+  message: string;
+  actions: number;
+  model?: string;
+}

@@ -205,4 +205,30 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
     assert.equal(f.dossierOpcoId, d.id);
     assert.ok(f.joursRetard > 0);
   });
+
+  it("journalise les exécutions et pose un verrou exclusif", async () => {
+    const debut = "2026-10-27T06:17:00.000Z";
+    await repo.logAgentRun({
+      id: "run-1", agentId: "agt-001", declencheur: "planifie", debut, fin: debut,
+      statut: "succes", message: "RAS", actions: 2, model: "modele-test",
+    });
+    await repo.logAgentRun({
+      id: "run-2", agentId: "agt-002", declencheur: "manuel", debut: "2026-10-27T07:00:00.000Z",
+      fin: "2026-10-27T07:00:01.000Z", statut: "echec", message: "Clé refusée", actions: 0,
+    });
+    const runs = await repo.getAgentRuns(10);
+    assert.deepEqual(runs.map((r) => r.id), ["run-2", "run-1"]);
+    assert.equal(runs[1].debut, debut);
+    assert.equal(runs[1].model, "modele-test");
+    assert.equal(runs[0].model, undefined);
+
+    let inner: unknown = "non appelé";
+    const outer = await repo.withLock("test", async () => {
+      inner = await repo.withLock("test", async () => "doublon");
+      return "ok";
+    });
+    assert.deepEqual(outer, { value: "ok" });
+    assert.equal(inner, null, "un second détenteur est refusé pendant le travail");
+    assert.deepEqual(await repo.withLock("test", async () => 1), { value: 1 }, "verrou libéré ensuite");
+  });
 });

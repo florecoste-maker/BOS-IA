@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAgentsConfig } from "@/lib/agents/claude";
+import { MIN_CRON_SECRET_LENGTH, getScheduleConfig } from "@/lib/agents/schedule";
+import { getRepository } from "@/lib/data";
 import { isDatabaseConfigured } from "@/lib/db/config";
 import { getIntegrationsOverview } from "@/lib/integrations/config";
 import { probeTidyCalConnection } from "@/lib/integrations/tidycal";
@@ -15,6 +17,11 @@ export async function GET(request: NextRequest) {
   const dbProbe = isDatabaseConfigured()
     ? await (await import("@/lib/db/mysql")).probeDatabase()
     : null;
+  const schedule = getScheduleConfig();
+  const lastScheduled =
+    dbProbe?.ok
+      ? (await (await getRepository()).getAgentRuns(200)).find((r) => r.declencheur === "planifie")
+      : undefined;
 
   return NextResponse.json({
     ...overview,
@@ -37,6 +44,25 @@ export async function GET(request: NextRequest) {
         : dbProbe.ok
           ? []
           : ["Vérifier l'hôte, le nom de la base, l'utilisateur et le mot de passe dans hPanel"],
+    },
+    agentsPlanifies: {
+      status:
+        schedule.configured && dbProbe?.ok && agents.configured
+          ? "configured"
+          : schedule.configured
+            ? "partial"
+            : "missing",
+      intervalHours: schedule.intervalHours,
+      dernierPassage: lastScheduled?.debut ?? null,
+      needsFromUser: [
+        !schedule.configured
+          ? schedule.secretTooShort
+            ? `BOS_CRON_SECRET trop court (${MIN_CRON_SECRET_LENGTH} caractères minimum)`
+            : "Secret BOS_CRON_SECRET (openssl rand -hex 32) dans hPanel et dans le planificateur"
+          : null,
+        !dbProbe?.ok ? "Base MySQL connectée (requise pour l'historique)" : null,
+        !agents.configured ? "Clé API Claude (ANTHROPIC_API_KEY)" : null,
+      ].filter(Boolean),
     },
     agentsIa: {
       status: agents.configured ? "configured" : "missing",
