@@ -1,12 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getAgentsConfig } from "@/lib/agents/claude";
 import { getIntegrationsOverview } from "@/lib/integrations/config";
 import { probeTidyCalConnection } from "@/lib/integrations/tidycal";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const overview = getIntegrationsOverview();
+export async function GET(request: NextRequest) {
+  const servedHost =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const overview = getIntegrationsOverview(servedHost);
   const tidycalProbe = await probeTidyCalConnection();
   const agents = getAgentsConfig();
 

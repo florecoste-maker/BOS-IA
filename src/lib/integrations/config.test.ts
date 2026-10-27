@@ -47,14 +47,17 @@ describe("Jamaliance integrations config", () => {
     assert.equal(cfg.embedUrl, "https://tidycal.com/jamaliance?embed=1");
   });
 
-  it("signale Hostinger et TidyCal comme à configurer sans env", () => {
+  it("utilise les valeurs Jamaliance par défaut sans env", () => {
     const overview = getIntegrationsOverview();
     assert.equal(overview.agency, "Jamaliance");
     assert.equal(overview.product, "BOS-IA");
-    assert.equal(overview.tidycal.status, "missing");
-    assert.equal(overview.hostinger.status, "missing");
-    assert.ok(overview.tidycal.needsFromUser.length > 0);
-    assert.ok(overview.hostinger.needsFromUser.length > 0);
+    assert.equal(overview.tidycal.status, "configured");
+    assert.equal(overview.tidycal.bookingUrl, "https://tidycal.com/m4g6pv9/jamaliance");
+    assert.equal(overview.hostinger.status, "configured");
+    assert.equal(overview.hostinger.siteUrl, "https://jamaliance.com");
+    assert.equal(overview.hostinger.appUrl, "https://app.jamaliance.com");
+    assert.deepEqual(overview.tidycal.needsFromUser, []);
+    assert.deepEqual(overview.hostinger.needsFromUser, []);
   });
 
   it("lit le site Hostinger public", () => {
@@ -70,6 +73,35 @@ describe("Jamaliance integrations config", () => {
     const overview = getIntegrationsOverview();
     assert.equal(overview.hostinger.appUrl, "https://app.jamaliance.com");
     assert.equal(overview.hostinger.targetSubdomain, "app.jamaliance.com");
+    assert.equal(overview.hostinger.status, "configured");
+  });
+
+  it("passe Hostinger et TidyCal en connecté une fois les URLs renseignées", () => {
+    process.env.NEXT_PUBLIC_JAMALIANCE_SITE_URL = "https://jamaliance.com";
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.jamaliance.com";
+    process.env.NEXT_PUBLIC_TIDYCAL_URL = "https://tidycal.com/m4g6pv9/jamaliance";
+    const overview = getIntegrationsOverview("app.jamaliance.com");
+    assert.equal(overview.hostinger.status, "configured");
+    assert.deepEqual(overview.hostinger.needsFromUser, []);
+    assert.equal(overview.tidycal.status, "configured");
+    assert.deepEqual(overview.tidycal.needsFromUser, []);
+    assert.ok(overview.tidycal.optional.length > 0);
+  });
+
+  it("signale un domaine servi différent de NEXT_PUBLIC_APP_URL", () => {
+    process.env.NEXT_PUBLIC_JAMALIANCE_SITE_URL = "https://jamaliance.com";
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.jamaliance.com";
+    const overview = getIntegrationsOverview("autre.jamaliance.com");
     assert.equal(overview.hostinger.status, "partial");
+    assert.equal(overview.hostinger.servedHost, "autre.jamaliance.com");
+    assert.match(overview.hostinger.needsFromUser[0], /autre\.jamaliance\.com/);
+  });
+
+  it("ignore localhost pour la comparaison de domaine", () => {
+    process.env.NEXT_PUBLIC_JAMALIANCE_SITE_URL = "https://jamaliance.com";
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.jamaliance.com";
+    const overview = getIntegrationsOverview("localhost:3000");
+    assert.equal(overview.hostinger.status, "configured");
+    assert.equal(overview.hostinger.servedHost, null);
   });
 });

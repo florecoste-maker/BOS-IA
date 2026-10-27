@@ -11,6 +11,7 @@ type Overview = {
     apiReady: boolean;
     bookingTypeReady: boolean;
     needsFromUser: string[];
+    optional: string[];
     live?: {
       connected: boolean;
       message?: string;
@@ -22,6 +23,7 @@ type Overview = {
     status: "configured" | "partial" | "missing";
     siteUrl: string | null;
     appUrl: string | null;
+    servedHost: string | null;
     targetSubdomain?: string;
     needsFromUser: string[];
   };
@@ -98,6 +100,18 @@ export function IntegrationsPanel() {
             ))}
           </ul>
         ) : null}
+        {data.tidycal.optional.length > 0 ? (
+          <>
+            <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Optionnel
+            </p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-ink-muted">
+              {data.tidycal.optional.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </>
+        ) : null}
       </article>
 
       <article className="border-l-2 border-accent/50 pl-4">
@@ -111,6 +125,9 @@ export function IntegrationsPanel() {
         <ul className="mt-3 space-y-1 text-sm text-ink-muted">
           <li>Vitrine Horizons : {data.hostinger.siteUrl ?? "non défini"}</li>
           <li>Moteur BOS-IA : {data.hostinger.appUrl ?? "non défini"}</li>
+          {data.hostinger.servedHost ? (
+            <li>En ligne sur : {data.hostinger.servedHost}</li>
+          ) : null}
           <li>
             Sous-domaine cible :{" "}
             {data.hostinger.targetSubdomain ?? "app.jamaliance.com"}

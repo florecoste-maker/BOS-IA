@@ -24,10 +24,18 @@
 | Config Hostinger `standalone` + `.env.example` | ✅ Prêt |
 | Déploiement sur `app.jamaliance.com` | ✅ En ligne |
 
+## Dépôts
+
+`florecoste-maker/BOS-IA` et `florecoste-maker/BOS-IA-Hostinger` contiennent
+**le même code**. Toute modification doit être faite dans les deux, ou l'un des
+deux doit être archivé. Le dépôt réellement déployé est celui choisi dans hPanel
+(Sites web → app.jamaliance.com → Git) : `GET /api/health` répond `{"ok":true}`
+quand la version déployée inclut l'accès protégé.
+
 ## Démarrage local
 
 ```bash
-cp .env.example .env.local   # valeurs d'exemple déjà alignées Jamaliance
+cp .env.example .env.local   # puis renseigner BOS_ADMIN_PASSWORD et BOS_SESSION_SECRET
 npm install
 npm run dev
 ```
@@ -57,9 +65,9 @@ npm run lint
 
 **Prérequis plan :** Business ou Cloud avec *Web Apps Node.js*.
 
-1. hPanel → **Sites web** → **Ajouter un site** → **Web App Node.js**
-2. Source : **GitHub** → dépôt `florecoste-maker/BOS-IA`, branche `main`
-3. Réglages de build :
+1. hPanel → **Sites web** → **Web App / Node.js**, source GitHub
+   `florecoste-maker/BOS-IA-Hostinger` (ou `florecoste-maker/BOS-IA`, identique), branche `main`
+2. Réglages de build :
 
    | Champ | Valeur |
    |-------|--------|
@@ -71,8 +79,9 @@ npm run lint
    | Fichier d'entrée (si demandé) | `server.js` |
    | Dossier de sortie | `.next` |
 
-   Le serveur de build Hostinger a une glibc trop ancienne pour le binaire
-   natif SWC de Next 16 (`GLIBC_2.29 not found`). D'où :
+   Le serveur de build Hostinger ne peut pas charger le binaire natif SWC de
+   Next 16 (`GLIBC_2.29 not found` pour la version gnu, `invalid ELF header`
+   pour la version musl). D'où :
    - `next.config.mjs` (pas de `.ts` : la config se lit sans SWC) ;
    - `npm run build` = `next build --webpack` (Turbopack n'existe qu'en natif) ;
    - `@next/swc-wasm-nodejs` installé : Next bascule automatiquement sur SWC
@@ -82,16 +91,17 @@ npm run lint
    `dependencies` : le build fonctionne même si Hostinger installe en mode
    production (`NODE_ENV=production`).
 
-4. Domaine : **app.jamaliance.com** (sous-domaine ; jamaliance.com reste sur Horizons)
-5. Variables d'environnement : copier celles de `.env.example`, avec
-   `NEXT_PUBLIC_APP_URL=https://app.jamaliance.com`.
-   Les variables `NEXT_PUBLIC_*` sont figées **au build** : après les avoir
-   modifiées, relancer un déploiement.
-6. Optionnel : `TIDYCAL_API_TOKEN` pour l'API (l'embed public vit déjà sur le site Horizons)
-   **Obligatoires** pour ouvrir le cockpit : `BOS_ADMIN_PASSWORD` (12 caractères
-   minimum) et `BOS_SESSION_SECRET` (32 caractères minimum, `openssl rand -hex 32`).
-   Sans elles, `/app` et `/api` restent fermés.
-7. Agents IA : `ANTHROPIC_API_KEY` (console.anthropic.com → API Keys).
+3. Domaine / sous-domaine : **app.jamaliance.com** (laisser jamaliance.com sur Horizons)
+4. Variables d'environnement **obligatoires** pour ouvrir le cockpit :
+   `BOS_ADMIN_PASSWORD` (12 caractères minimum) et `BOS_SESSION_SECRET`
+   (32 caractères minimum, `openssl rand -hex 32`). Sans elles, `/app` et `/api`
+   restent fermés (page de connexion avec un message de configuration).
+5. Les URLs ont des valeurs Jamaliance par défaut (`https://jamaliance.com`,
+   `https://app.jamaliance.com`, calendrier TidyCal de jamaliance.com/reservation) ;
+   les variables `NEXT_PUBLIC_*` de `.env.example` ne servent qu'à les changer et
+   sont figées **au build** : après modification, redéployer.
+6. Agents IA : `ANTHROPIC_API_KEY` (console.anthropic.com → API Keys).
+7. Optionnel : `TIDYCAL_API_TOKEN` pour l'API (l'embed public vit déjà sur le site Horizons)
 8. Vérifier : `https://app.jamaliance.com/api/health` répond `{"ok":true}`, puis se
    connecter sur `https://app.jamaliance.com/login`.
 

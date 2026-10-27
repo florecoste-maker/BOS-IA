@@ -1,7 +1,8 @@
 /**
  * Config en JavaScript (et non TypeScript) : Next n'a pas besoin de SWC pour
- * la lire. Sur le serveur de build Hostinger (glibc < 2.30), le binaire natif
- * SWC ne se charge pas et la transpilation de `next.config.ts` échouait.
+ * la lire. Sur le serveur de build Hostinger, le binaire natif SWC ne se
+ * charge pas (glibc trop ancienne pour la version gnu, « invalid ELF header »
+ * pour la version musl) et la transpilation de `next.config.ts` échouait.
  */
 
 /** En-têtes de sécurité appliqués à toutes les réponses du moteur BOS-IA. */

@@ -8,7 +8,7 @@ import { cpSync, existsSync } from "node:fs";
 const standalone = ".next/standalone";
 
 if (!existsSync(standalone)) {
-  console.error(`${standalone} introuvable : vérifiez output: "standalone" dans next.config.ts.`);
+  console.error(`${standalone} introuvable : vérifiez output: "standalone" dans next.config.mjs.`);
   process.exit(1);
 }
 

@@ -1,18 +1,25 @@
 import type { Metadata } from "next";
-import { DM_Sans, Sora } from "next/font/google";
+import localFont from "next/font/local";
 import { brand } from "@/lib/brand";
 import "./globals.css";
 
-const dmSans = DM_Sans({
+/*
+ * Polices DM Sans et Sora (SIL Open Font License) hébergées dans le projet :
+ * le build ne télécharge plus rien depuis Google Fonts, dont la réponse
+ * faisait parfois échouer `next/font/google`. Fichiers variables, sous-ensemble latin.
+ */
+const dmSans = localFont({
+  src: "./fonts/dm-sans-latin.woff2",
   variable: "--font-dm-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: "400 700",
+  display: "swap",
 });
 
-const sora = Sora({
+const sora = localFont({
+  src: "./fonts/sora-latin.woff2",
   variable: "--font-sora",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: "500 700",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
