@@ -1,12 +1,15 @@
 import type {
+  ActionExecution,
   Agent,
   AgentAction,
+  EmailDraft,
   DashboardMetrics,
   Invoice,
   Learner,
   OpcoDossier,
   TrainingSession,
 } from "./types";
+import { cleanEdits, isRetryable } from "./actions/rules";
 import { computeMetrics as computeMetricsFrom } from "./metrics";
 
 function daysAgo(n: number): string {
@@ -382,10 +385,18 @@ export const store = {
     return { ...dossier };
   },
 
-  resolveHitl(actionId: string, decision: "approved" | "rejected") {
+  /** Décision humaine, une seule fois : une action déjà tranchée est refusée (null). */
+  resolveHitl(
+    actionId: string,
+    decision: "approved" | "rejected",
+    edits?: { objet?: string; corps?: string },
+  ) {
     const action = agentActions.find((a) => a.id === actionId);
-    if (!action || !action.requiresHitl) return null;
+    if (!action || !action.requiresHitl || action.hitlStatus !== "pending") return null;
     action.hitlStatus = decision;
+    if (decision === "approved" && action.email) {
+      action.email = { ...action.email, ...cleanEdits(edits) };
+    }
     const agent = agents.find((a) => a.id === action.agentId);
     if (agent && agent.status === "en_attente_hitl") {
       agent.status = decision === "approved" ? "actif" : "pause";
@@ -397,12 +408,40 @@ export const store = {
     return { ...action };
   },
 
+  /** Réserve l'exécution d'une action approuvée (une seule à la fois, relance après échec). */
+  claimExecution(actionId: string) {
+    const action = agentActions.find((a) => a.id === actionId);
+    if (!action || action.hitlStatus !== "approved") return null;
+    if (action.execution && !isRetryable(action.execution)) return null;
+    action.execution = { statut: "en_cours", le: new Date().toISOString(), message: "" };
+    return { ...action };
+  },
+
+  finishExecution(actionId: string, execution: ActionExecution) {
+    const action = agentActions.find((a) => a.id === actionId);
+    if (action) action.execution = execution;
+  },
+
+  findRecipient(draft: EmailDraft) {
+    if (draft.cible === "apprenant") {
+      const learner = learners.find((l) => l.id === draft.refId);
+      return learner ? { nom: `${learner.prenom} ${learner.nom}`, email: learner.email || null } : null;
+    }
+    const invoice = invoices.find((i) => i.id === draft.refId);
+    return invoice ? { nom: invoice.client, email: invoice.emailClient ?? null } : null;
+  },
+
   /** Enregistre une analyse d'agent IA ; les actions sensibles vont en file HITL. */
   recordAgentRun(
     agentId: string,
     proposal: {
       resume: string;
-      actions: Array<{ type: string; description: string; requiresHitl: boolean }>;
+      actions: Array<{
+        type: string;
+        description: string;
+        requiresHitl: boolean;
+        email?: EmailDraft | null;
+      }>;
     },
     model: string,
   ) {
@@ -417,6 +456,7 @@ export const store = {
       timestamp,
       requiresHitl: a.requiresHitl,
       hitlStatus: a.requiresHitl ? "pending" : undefined,
+      ...(a.email ? { email: a.email } : {}),
     }));
     agentActions.unshift(...created);
     agent.derniereAction = proposal.resume;

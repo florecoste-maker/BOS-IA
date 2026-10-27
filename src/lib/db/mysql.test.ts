@@ -111,7 +111,8 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
     assert.equal(learner.pipelineStage, "completion");
 
     await conn.query(
-      "INSERT INTO bos_invoices VALUES ('inv-old','FA-2020-0001','Ancien',NULL,100,30,'emise','2020-01-01','2020-01-31')",
+      `INSERT INTO bos_invoices (id, numero, client, dossier_opco_id, montant_ht, acompte_pct, status, emise_le, echeance)
+       VALUES ('inv-old','FA-2020-0001','Ancien',NULL,100,30,'emise','2020-01-01','2020-01-31')`,
     );
     const invoices = await repo.getInvoices();
     assert.ok(invoices.find((i) => i.id === "inv-old")!.joursRetard > 0);
@@ -230,5 +231,85 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
     assert.deepEqual(outer, { value: "ok" });
     assert.equal(inner, null, "un second détenteur est refusé pendant le travail");
     assert.deepEqual(await repo.withLock("test", async () => 1), { value: 1 }, "verrou libéré ensuite");
+  });
+
+  it("migre une base existante puis exécute les e-mails approuvés (envoi, échec, renvoi, test)", async () => {
+    // Base créée avant cette version : colonnes absentes, ajoutées au prochain démarrage.
+    await conn.query("ALTER TABLE bos_invoices DROP COLUMN email_client");
+    await conn.query("ALTER TABLE bos_agent_actions DROP COLUMN email_cible, DROP COLUMN exec_statut");
+    const state = (globalThis as { __bosDb?: { pool: { end(): Promise<void> } } }).__bosDb;
+    await state?.pool.end();
+    (globalThis as { __bosDb?: unknown }).__bosDb = undefined;
+    assert.ok((await repo.getInvoices()).length > 0, "lecture après migration");
+
+    const { decideAction, retryAction } = await import("@/lib/actions/execute");
+    const { startSmtpSink } = await import("@/lib/testing/smtp-sink");
+    const learner = (await repo.getLearners()).find((l) => l.email === "nouvelle@exemple.fr")!;
+    const invoice = (await repo.getInvoices()).find((i) => i.numero === "FA-IMP-1")!;
+    const draft = (cible: "apprenant" | "facture", refId: string) => ({
+      type: "relance",
+      description: "Relancer",
+      requiresHitl: true,
+      email: { cible, refId, objet: "Votre formation", corps: "Bonjour,\n\nL'équipe Jamaliance" },
+    });
+    const run = await repo.recordAgentRun(
+      "agt-004",
+      {
+        resume: "r",
+        actions: [draft("apprenant", learner.id), draft("facture", invoice.id), draft("apprenant", learner.id)],
+      },
+      "modele-test",
+    );
+    const [ok, sansAdresse, test] = run!.actions.map((a) => a.id);
+    assert.equal((await repo.getAgentActions()).find((a) => a.id === ok)?.email?.cible, "apprenant");
+
+    const keys = ["SMTP_HOST", "SMTP_PORT", "SMTP_FROM", "BOS_EMAIL_REDIRECTION"] as const;
+    const before = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    const failing = await startSmtpSink({ fail: true });
+    const sink = await startSmtpSink();
+    try {
+      // Sans SMTP : approuvé, à envoyer à la main.
+      for (const k of keys) delete process.env[k];
+      const first = await decideAction(repo, ok, "approved", { objet: "Reprise de votre parcours" });
+      assert.equal(first.execution?.statut, "a_faire");
+      assert.match(first.execution!.message, /nouvelle@exemple\.fr/);
+
+      // SMTP qui refuse : échec enregistré.
+      process.env.SMTP_HOST = "127.0.0.1";
+      process.env.SMTP_FROM = "Jamaliance <contact@jamaliance.com>";
+      process.env.SMTP_PORT = String(failing.port);
+      assert.equal((await retryAction(repo, ok)).statut, "echec");
+
+      // Renvoi vers un SMTP qui accepte : envoyé une fois, plus de renvoi possible.
+      process.env.SMTP_PORT = String(sink.port);
+      const sent = await retryAction(repo, ok);
+      assert.equal(sent.statut, "envoye");
+      assert.equal(sink.mails.length, 1);
+      assert.deepEqual(sink.mails[0].to, ["<nouvelle@exemple.fr>"]);
+      assert.match(sink.mails[0].data, /Reprise de votre parcours|UTF-8/);
+      await assert.rejects(() => retryAction(repo, ok));
+      const stored = (await repo.getAgentActions()).find((a) => a.id === ok)!;
+      assert.equal(stored.execution?.statut, "envoye");
+      assert.equal(stored.email?.objet, "Reprise de votre parcours");
+
+      // Facture sans adresse client : échec explicite, rien n'est envoyé.
+      const noAddress = await decideAction(repo, sansAdresse, "approved");
+      assert.equal(noAddress.execution?.statut, "echec");
+      assert.match(noAddress.execution!.message, /email_client/);
+
+      // Mode test : redirigé vers l'adresse de test.
+      process.env.BOS_EMAIL_REDIRECTION = "moi@jamaliance.com";
+      const redirected = await decideAction(repo, test, "approved");
+      assert.equal(redirected.execution?.statut, "envoye");
+      assert.deepEqual(sink.mails[1].to, ["<moi@jamaliance.com>"]);
+      assert.match(redirected.execution!.message, /Mode test/);
+    } finally {
+      for (const k of keys) {
+        if (before[k] === undefined) delete process.env[k];
+        else process.env[k] = before[k];
+      }
+      await failing.close();
+      await sink.close();
+    }
   });
 });

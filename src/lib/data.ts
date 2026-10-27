@@ -6,10 +6,12 @@
 import { isDatabaseConfigured } from "./db/config";
 import { store } from "./store";
 import type {
+  ActionExecution,
   Agent,
   AgentAction,
   AgentRunLog,
   DashboardMetrics,
+  EmailDraft,
   Invoice,
   Learner,
   OpcoDossier,
@@ -20,7 +22,12 @@ export type DataMode = "mysql" | "demo";
 
 export interface AgentProposalInput {
   resume: string;
-  actions: Array<{ type: string; description: string; requiresHitl: boolean }>;
+  actions: Array<{
+    type: string;
+    description: string;
+    requiresHitl: boolean;
+    email?: EmailDraft | null;
+  }>;
 }
 
 export interface AgentRunRecord {
@@ -51,10 +58,17 @@ export interface Repository {
   updateLearnerStatus(id: string, status: Learner["status"]): Promise<Learner | null>;
   validateComprehension(id: string, score: number): Promise<Learner | null>;
   completeOpcoDossier(id: string): Promise<OpcoDossier | null>;
+  /** Décision humaine sur une action en attente (null si introuvable ou déjà tranchée). */
   resolveHitl(
     actionId: string,
     decision: "approved" | "rejected",
+    edits?: { objet?: string; corps?: string },
   ): Promise<AgentAction | null>;
+  /** Réserve l'exécution d'une action approuvée ; null si déjà en cours ou faite. */
+  claimExecution(actionId: string): Promise<AgentAction | null>;
+  finishExecution(actionId: string, execution: ActionExecution): Promise<void>;
+  /** Destinataire réel d'un brouillon, d'après les données (jamais d'après le modèle). */
+  findRecipient(draft: EmailDraft): Promise<{ nom: string; email: string | null } | null>;
   recordAgentRun(
     agentId: string,
     proposal: AgentProposalInput,
@@ -83,7 +97,10 @@ const demoRepository: Repository = {
   updateLearnerStatus: async (id, status) => store.updateLearnerStatus(id, status),
   validateComprehension: async (id, score) => store.validateComprehension(id, score),
   completeOpcoDossier: async (id) => store.completeOpcoDossier(id),
-  resolveHitl: async (actionId, decision) => store.resolveHitl(actionId, decision),
+  resolveHitl: async (actionId, decision, edits) => store.resolveHitl(actionId, decision, edits),
+  claimExecution: async (actionId) => store.claimExecution(actionId),
+  finishExecution: async (actionId, execution) => store.finishExecution(actionId, execution),
+  findRecipient: async (draft) => store.findRecipient(draft),
   recordAgentRun: async (agentId, proposal, model) =>
     store.recordAgentRun(agentId, proposal, model),
   emitProofToCash: async (learnerId) => store.emitProofToCash(learnerId),

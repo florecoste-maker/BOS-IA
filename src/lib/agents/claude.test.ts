@@ -28,8 +28,33 @@ describe("Garde-fous des agents IA", () => {
     assert.equal(out.actions[0].requiresHitl, false);
   });
 
+  it("garde un brouillon d'e-mail seulement vers un apprenant ou une facture connus, en HITL", () => {
+    const refs = { apprenants: new Set(["lrn-001"]), factures: new Set(["inv-003"]) };
+    const draft = { cible: "apprenant" as const, refId: "lrn-001", objet: " Reprise ", corps: " Bonjour " };
+    const out = normalizeProposal(
+      libre,
+      {
+        resume: "r",
+        actions: [
+          { type: "relance", description: "Relancer", requiresHitl: false, email: draft },
+          { type: "inconnu", description: "Écrire", requiresHitl: false, email: { ...draft, refId: "lrn-999" } },
+          { type: "facture", description: "Relancer", requiresHitl: false, email: { ...draft, cible: "facture", refId: "inv-001" } },
+        ],
+      },
+      refs,
+    );
+    assert.deepEqual(out.actions[0].email, { cible: "apprenant", refId: "lrn-001", objet: "Reprise", corps: "Bonjour" });
+    assert.equal(out.actions[0].requiresHitl, true, "un e-mail passe toujours par la validation humaine");
+    assert.equal(out.actions[1].email, undefined, "id inconnu écarté");
+    assert.equal(out.actions[2].email, undefined, "facture sans adresse client écartée");
+    assert.equal(out.actions[1].requiresHitl, false);
+    const sansRefs = normalizeProposal(libre, { resume: "r", actions: [{ type: "t", description: "d", requiresHitl: false, email: draft }] });
+    assert.equal(sansRefs.actions[0].email, undefined);
+  });
+
   it("n'envoie pas les e-mails des apprenants au modèle", async () => {
     const context = await buildAgentContext(await getRepository());
     assert.equal(JSON.stringify(context).includes("@"), false);
+    assert.ok(context.factures.every((f) => !("emailClient" in f) && typeof f.emailClientConnu === "boolean"));
   });
 });

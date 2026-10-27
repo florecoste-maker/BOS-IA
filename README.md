@@ -23,6 +23,7 @@
 | Base de données MySQL / MariaDB (données persistantes) | ✅ Prêt (variables `DB_*` requises, sinon mode démo) |
 | Import CSV / Excel (`/app/import`) | ✅ Prêt (nécessite la base) |
 | Agents planifiés (analyse quotidienne) | ✅ Prêt (`BOS_CRON_SECRET` + base + clé Claude) |
+| Envoi des e-mails approuvés (SMTP) | ✅ Prêt (`SMTP_*` requis, sinon envoi manuel) |
 | CI GitHub (lint, tests, build, test MySQL 8) | ✅ Prêt |
 | Config Hostinger `standalone` + `.env.example` | ✅ Prêt |
 | Déploiement sur `app.jamaliance.com` | ✅ En ligne |
@@ -173,6 +174,31 @@ et **propose** jusqu'à 3 actions. Rien n'est exécuté automatiquement. Les age
 « HITL obligatoire » ou à risque élevé envoient toujours leurs propositions dans la
 file de validation humaine, quoi que réponde le modèle. Les e-mails des apprenants
 ne sont pas transmis au modèle.
+
+## Exécution des actions approuvées
+
+Quand une action consiste à écrire à un apprenant ou au client d'une facture, l'agent
+joint un **brouillon d'e-mail**. Dans la file HITL (`/app/agents`), le brouillon
+s'affiche avec son destinataire ; objet et texte sont modifiables, puis
+**« Approuver et envoyer »** l'envoie par SMTP. Les autres actions restent « à
+réaliser par l'équipe ».
+
+Garde-fous :
+- le modèle ne fournit jamais d'adresse : il désigne un apprenant ou une facture par
+  son id, l'adresse est lue en base (e-mail de l'apprenant, `email_client` de la
+  facture) ; un id inconnu ou une facture sans adresse écarte le brouillon ;
+- les adresses ne sont pas transmises au modèle ;
+- tout brouillon passe par la validation humaine, quel que soit l'agent ;
+- une décision ne se prend qu'une fois : pas de double envoi sur double clic ;
+- en mode démonstration, l'envoi est simulé ; sans SMTP, l'e-mail est marqué « à
+  envoyer » (avec l'adresse) ; un échec SMTP est affiché, avec « Renvoyer » ;
+- `BOS_EMAIL_REDIRECTION` (mode test) envoie tout vers votre adresse, le
+  destinataire prévu étant indiqué dans l'objet.
+
+Configuration (hPanel) : `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
+`SMTP_FROM` — voir `.env.example` pour Google Workspace et la messagerie Hostinger.
+`/app/integrations` → carte « E-mails (SMTP) » vérifie la connexion. Pour les
+relances de factures, importer les factures avec la colonne `email_client`.
 
 ## Agents planifiés
 
