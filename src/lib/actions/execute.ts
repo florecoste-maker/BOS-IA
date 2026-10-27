@@ -3,6 +3,7 @@
  * sont exécutables ; les autres actions restent à réaliser par l'équipe.
  * Le destinataire vient des données (apprenant ou client de facture), jamais du modèle.
  */
+import { alertSendFailure } from "@/lib/alerts";
 import type { Repository } from "@/lib/data";
 import { getMailConfig, isEmail, sendMail } from "@/lib/mail";
 import type { ActionExecution, AgentAction } from "@/lib/types";
@@ -33,6 +34,9 @@ export async function executeAction(repo: Repository, actionId: string) {
     execution = result("echec", "Erreur interne pendant l'exécution");
   }
   await repo.finishExecution(actionId, execution);
+  if (execution.statut === "echec" && action.email) {
+    await alertSendFailure(action.email.objet, execution.message).catch(() => {});
+  }
   return execution;
 }
 

@@ -3,6 +3,7 @@ import { getAgentsConfig } from "@/lib/agents/claude";
 import { MIN_CRON_SECRET_LENGTH, getScheduleConfig } from "@/lib/agents/schedule";
 import { getRepository } from "@/lib/data";
 import { getMailConfig, verifyMail } from "@/lib/mail";
+import { getAlertAddress } from "@/lib/alerts";
 import { isDatabaseConfigured } from "@/lib/db/config";
 import { getIntegrationsOverview } from "@/lib/integrations/config";
 import { probeTidyCalConnection } from "@/lib/integrations/tidycal";
@@ -66,6 +67,17 @@ export async function GET(request: NextRequest) {
         : mailProbe?.ok
           ? []
           : ["Vérifier l'hôte, le port, l'utilisateur et le mot de passe SMTP"],
+    },
+    alertes: {
+      status: getAlertAddress() && mailProbe?.ok ? "configured" : getAlertAddress() ? "partial" : "missing",
+      adresse: getAlertAddress(),
+      needsFromUser: [
+        !getAlertAddress()
+          ? "BOS_ALERTES_EMAIL : adresse qui reçoit rapports, alertes et sauvegardes"
+          : null,
+        getAlertAddress() && !mailProbe?.ok ? "SMTP connecté (les alertes partent par e-mail)" : null,
+        !schedule.configured ? "BOS_CRON_SECRET (rapport quotidien, bilan de santé, sauvegarde hebdomadaire)" : null,
+      ].filter(Boolean),
     },
     agentsPlanifies: {
       status:

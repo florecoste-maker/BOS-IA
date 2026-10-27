@@ -78,12 +78,27 @@ export function prepareMail(config: MailConfig, mail: OutgoingMail) {
   };
 }
 
-export async function sendMail(config: MailConfig, mail: OutgoingMail) {
-  const prepared = prepareMail(config, mail);
+export interface MailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+}
+
+/**
+ * `interne` : message pour l'équipe (alerte, sauvegarde) — ni redirection de
+ * test ni copie cachée, qui ne concernent que les e-mails aux clients.
+ */
+export async function sendMail(
+  config: MailConfig,
+  mail: OutgoingMail,
+  options: { interne?: boolean; attachments?: MailAttachment[] } = {},
+) {
+  const prepared = options.interne ? { ...mail } : prepareMail(config, mail);
   const info = await transport(config).sendMail({
     from: config.from,
     ...prepared,
-    bcc: config.copie ?? undefined,
+    bcc: options.interne ? undefined : (config.copie ?? undefined),
+    attachments: options.attachments,
   });
   return { to: prepared.to, messageId: info.messageId as string | undefined };
 }

@@ -3,13 +3,14 @@ import { SESSION_COOKIE, getAuthConfig, verifySessionToken } from "@/lib/auth";
 
 /**
  * Routes ouvertes sans session : connexion, sonde de santé Hostinger, et
- * déclencheur des agents planifiés (protégé par son propre secret BOS_CRON_SECRET).
+ * déclencheur des agents planifiés et sauvegarde (protégés par le secret BOS_CRON_SECRET).
  */
 const PUBLIC_API = [
   "/api/auth/login",
   "/api/auth/logout",
   "/api/health",
   "/api/agents/planifie",
+  "/api/sauvegarde",
 ];
 
 export function proxy(request: NextRequest) {

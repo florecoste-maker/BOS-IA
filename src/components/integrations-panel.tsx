@@ -45,6 +45,11 @@ type Overview = {
     message: string;
     needsFromUser: string[];
   };
+  alertes: {
+    status: "configured" | "partial" | "missing";
+    adresse: string | null;
+    needsFromUser: string[];
+  };
   agentsPlanifies: {
     status: "configured" | "partial" | "missing";
     intervalHours: number;
@@ -238,6 +243,25 @@ export function IntegrationsPanel() {
         {data.emails.needsFromUser.length > 0 ? (
           <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-ink-muted">
             {data.emails.needsFromUser.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : null}
+      </article>
+
+      <article className="border-l-2 border-danger/40 pl-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="font-display text-lg font-semibold text-ink">Alertes et sauvegardes</h3>
+          <StatusPill label={label(data.alertes.status)} tone={tone(data.alertes.status)} />
+        </div>
+        <ul className="mt-3 space-y-1 text-sm text-ink-muted">
+          <li>Destinataire : {data.alertes.adresse ?? "non défini"}</li>
+          <li>Rapport après chaque passage planifié (échecs, validations en attente)</li>
+          <li>Alerte si un e-mail approuvé ne part pas ; sauvegarde hebdomadaire jointe</li>
+        </ul>
+        {data.alertes.needsFromUser.length > 0 ? (
+          <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-ink-muted">
+            {data.alertes.needsFromUser.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
