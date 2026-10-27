@@ -9,6 +9,7 @@ const links = [
   { href: "/app/formation", label: "Formation" },
   { href: "/app/finance", label: "Finance" },
   { href: "/app/agents", label: "Digital Nexus" },
+  { href: "/app/import", label: "Import" },
   { href: "/app/integrations", label: "Connexions" },
 ];
 
