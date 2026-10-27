@@ -52,6 +52,48 @@ describe("Garde-fous des agents IA", () => {
     assert.equal(sansRefs.actions[0].email, undefined);
   });
 
+  it("garde un changement de statut seulement vers une fiche connue et une valeur autorisée", () => {
+    const refs = {
+      apprenants: new Set(["lrn-003"]),
+      factures: new Set<string>(),
+      toutesFactures: new Set(["inv-003"]),
+      dossiers: new Set(["opco-002"]),
+    };
+    const act = (operation: unknown) => ({ type: "t", description: "d", requiresHitl: false, operation }) as never;
+    const out = normalizeProposal(
+      libre,
+      {
+        resume: "r",
+        actions: [
+          act({ type: "statut_apprenant", refId: "lrn-003", valeur: "inactif" }),
+          act({ type: "statut_facture", refId: "inv-003", valeur: "payee" }), // geste humain
+          act({ type: "statut_apprenant", refId: "lrn-003", valeur: "certifie" }), // geste humain
+        ],
+      },
+      refs,
+    );
+    assert.deepEqual(out.actions[0].operation, { type: "statut_apprenant", refId: "lrn-003", valeur: "inactif" });
+    assert.equal(out.actions[0].requiresHitl, true, "un changement de statut passe par la validation humaine");
+    assert.equal(out.actions[1].operation, undefined);
+    assert.equal(out.actions[2].operation, undefined);
+
+    const others = normalizeProposal(
+      libre,
+      {
+        resume: "r",
+        actions: [
+          act({ type: "statut_dossier", refId: "opco-999", valeur: "transmis" }), // fiche inconnue
+          act({ type: "supprimer_tout", refId: "lrn-003", valeur: "inactif" }), // type inconnu
+          act({ type: "statut_dossier", refId: "opco-002", valeur: "transmis" }),
+        ],
+      },
+      refs,
+    );
+    assert.equal(others.actions[0].operation, undefined);
+    assert.equal(others.actions[1].operation, undefined);
+    assert.equal(others.actions[2].operation?.valeur, "transmis");
+  });
+
   it("n'envoie pas les e-mails des apprenants au modèle", async () => {
     const context = await buildAgentContext(await getRepository());
     assert.equal(JSON.stringify(context).includes("@"), false);

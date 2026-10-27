@@ -7,7 +7,8 @@ import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { brand } from "@/lib/brand";
 import { getRepository, type Repository } from "@/lib/data";
-import type { Agent, AgentRunLog, EmailDraft } from "@/lib/types";
+import { OPERATIONS, isAllowedValue, isOperationType } from "@/lib/actions/operations";
+import type { Agent, AgentRunLog, EmailDraft, StatusOperation } from "@/lib/types";
 
 export const DEFAULT_AGENTS_MODEL = "claude-opus-5-5";
 const MAX_ACTIONS = 3;
@@ -25,6 +26,7 @@ export interface AgentProposal {
     description: string;
     requiresHitl: boolean;
     email?: EmailDraft | null;
+    operation?: StatusOperation | null;
   }>;
 }
 
@@ -72,8 +74,30 @@ const proposalSchema = {
               { type: "null" },
             ],
           },
+          operation: {
+            description:
+              "Changement de statut à appliquer après validation humaine, sinon null. Seulement sur une fiche existante (id des données) et avec une valeur de la liste.",
+            anyOf: [
+              {
+                type: "object",
+                properties: {
+                  type: { type: "string", enum: Object.keys(OPERATIONS) },
+                  refId: { type: "string", description: "id de l'apprenant, du dossier OPCO ou de la facture." },
+                  valeur: {
+                    type: "string",
+                    description: Object.entries(OPERATIONS)
+                      .map(([type, o]) => `${type} : ${o.valeurs.join(", ")}`)
+                      .join(" ; "),
+                  },
+                },
+                required: ["type", "refId", "valeur"],
+                additionalProperties: false,
+              },
+              { type: "null" },
+            ],
+          },
         },
-        required: ["type", "description", "requiresHitl", "email"],
+        required: ["type", "description", "requiresHitl", "email", "operation"],
         additionalProperties: false,
       },
     },
@@ -119,14 +143,31 @@ function systemPrompt(agent: Agent) {
     "Tu analyses les données du cockpit fournies et tu proposes des actions ; tu n'exécutes rien toi-même.",
     "Appuie-toi uniquement sur les données fournies : si une information manque, dis-le dans le résumé plutôt que de la supposer.",
     "Pour écrire à un apprenant ou au client d'une facture, joins un brouillon d'e-mail complet (champ email) : il sera relu et envoyé par un humain. Pour une facture, seulement si emailClientConnu vaut true. Ton professionnel et courtois, vouvoiement.",
+    "Si l'action consiste à mettre à jour un statut (apprenant inactif depuis longtemps, dossier OPCO complet à transmettre, facture à passer en relance…), renseigne le champ operation. Une action peut combiner un e-mail et un changement de statut (ex. relance envoyée et facture passée en « relance »). Ne propose jamais un statut déjà en place.",
     "Réponds en français.",
   ].join("\n");
 }
 
-/** Ids réellement présents dans les données : un brouillon vers un autre id est écarté. */
+/** Ids réellement présents dans les données : un brouillon ou une opération vers un autre id est écarté. */
 export interface KnownRefs {
   apprenants: Set<string>;
+  /** Factures dont le client a une adresse e-mail (cibles d'un brouillon). */
   factures: Set<string>;
+  /** Toutes les factures et dossiers (cibles d'un changement de statut). */
+  toutesFactures?: Set<string>;
+  dossiers?: Set<string>;
+}
+
+function normalizeOperation(raw: AgentProposal["actions"][number]["operation"], refs?: KnownRefs) {
+  if (!raw || !refs || !isOperationType(raw.type) || !isAllowedValue(raw.type, raw.valeur)) return undefined;
+  const known =
+    raw.type === "statut_apprenant"
+      ? refs.apprenants
+      : raw.type === "statut_dossier"
+        ? refs.dossiers
+        : refs.toutesFactures;
+  if (!known?.has(raw.refId)) return undefined;
+  return { type: raw.type, refId: raw.refId, valeur: raw.valeur };
 }
 
 function normalizeEmail(raw: AgentProposal["actions"][number]["email"], refs?: KnownRefs) {
@@ -148,12 +189,14 @@ export function normalizeProposal(agent: Agent, raw: AgentProposal, refs?: Known
       .slice(0, MAX_ACTIONS)
       .map((a) => {
         const email = normalizeEmail(a.email, refs);
+        const operation = normalizeOperation(a.operation, refs);
         return {
           type: a.type.trim().slice(0, 60),
           description: a.description.trim().slice(0, 600),
-          // Un e-mail part toujours après validation humaine.
-          requiresHitl: forceHitl || a.requiresHitl || Boolean(email),
+          // Un e-mail ou un changement de statut passe toujours par la validation humaine.
+          requiresHitl: forceHitl || a.requiresHitl || Boolean(email) || Boolean(operation),
           ...(email ? { email } : {}),
+          ...(operation ? { operation } : {}),
         };
       }),
   };
@@ -264,10 +307,16 @@ async function analyse(repo: Repository, agent: Agent) {
     throw new AgentRunError("Réponse de l'agent illisible.", 502);
   }
 
-  const [learners, invoices] = await Promise.all([repo.getLearners(), repo.getInvoices()]);
+  const [learners, invoices, dossiers] = await Promise.all([
+    repo.getLearners(),
+    repo.getInvoices(),
+    repo.getOpcoDossiers(),
+  ]);
   const proposal = normalizeProposal(agent, parsed, {
     apprenants: new Set(learners.map((l) => l.id)),
     factures: new Set(invoices.filter((i) => i.emailClient).map((i) => i.id)),
+    toutesFactures: new Set(invoices.map((i) => i.id)),
+    dossiers: new Set(dossiers.map((d) => d.id)),
   });
   return repo.recordAgentRun(agent.id, proposal, response.model);
 }

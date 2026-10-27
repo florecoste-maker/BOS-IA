@@ -23,6 +23,7 @@ export async function PATCH(request: Request) {
     decision?: "approved" | "rejected" | "renvoyer";
     objet?: string;
     corps?: string;
+    valeur?: string;
   };
   if (!body.actionId || !["approved", "rejected", "renvoyer"].includes(body.decision ?? "")) {
     return NextResponse.json({ error: "actionId et décision requis" }, { status: 400 });
@@ -45,17 +46,23 @@ export async function PATCH(request: Request) {
         {
           objet: typeof body.objet === "string" ? body.objet : undefined,
           corps: typeof body.corps === "string" ? body.corps : undefined,
+          valeur: typeof body.valeur === "string" ? body.valeur : undefined,
         },
         actor?.nom,
       );
       await audit(
         actor,
         body.decision === "approved" ? "hitl_approuve" : "hitl_refuse",
-        action.email ? `E-mail « ${action.email.objet} »` : action.type,
+        action.email
+          ? `E-mail « ${action.email.objet} »`
+          : action.operation
+            ? `${action.operation.type} ${action.operation.refId} → ${action.operation.valeur}`
+            : action.type,
         {
           details: {
             action: action.id,
             agent: action.agentId,
+            ...(action.operation ? { operation: action.operation } : {}),
             ...(action.execution ? { envoi: action.execution.statut, message: action.execution.message } : {}),
           },
           request,

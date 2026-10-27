@@ -222,7 +222,7 @@ Garde-fous :
 - tout brouillon passe par la validation humaine, quel que soit l'agent ;
 - une décision ne se prend qu'une fois : pas de double envoi sur double clic ;
 - en mode démonstration, l'envoi est simulé ; sans SMTP, l'e-mail est marqué « à
-  envoyer » (avec l'adresse) ; un échec SMTP est affiché, avec « Renvoyer » ;
+  envoyer » (avec l'adresse) ; un échec SMTP est affiché, avec « Réessayer » ;
 - `BOS_EMAIL_REDIRECTION` (mode test) envoie tout vers votre adresse, le
   destinataire prévu étant indiqué dans l'objet.
 
@@ -230,6 +230,24 @@ Configuration (hPanel) : `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
 `SMTP_FROM` — voir `.env.example` pour Google Workspace et la messagerie Hostinger.
 `/app/integrations` → carte « E-mails (SMTP) » vérifie la connexion. Pour les
 relances de factures, importer les factures avec la colonne `email_client`.
+
+### Changements de statut
+
+Les agents peuvent aussi proposer de changer un statut, appliqué en base après
+approbation (seul ou avec un e-mail : « relancer et passer en relance ») :
+
+| Opération | Valeurs proposables |
+| --- | --- |
+| Statut d'un apprenant | lead, inscrit, en formation, ghost learner, abandon |
+| Statut d'un dossier OPCO | brouillon, complétude, transmis, accepté, refusé |
+| Statut d'une facture | émise, acompte payé, solde dû, relance, impayée |
+
+La carte affiche la fiche visée et son statut actuel ; la valeur reste modifiable
+dans la liste avant d'approuver. Les gestes qui engagent l'organisme restent
+humains : « payée » (avec la date, via le paiement), « certifié », etc. ne sont
+jamais proposables, et une valeur hors liste est ignorée, même modifiée à la main.
+Fiche inconnue → proposition écartée ; fiche supprimée entre-temps → « Échec », et
+l'e-mail associé n'est pas envoyé. Chaque application est inscrite au journal.
 
 ## Sauvegardes et alertes
 

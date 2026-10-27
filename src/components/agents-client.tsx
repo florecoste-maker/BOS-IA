@@ -3,19 +3,22 @@
 import { useState, useTransition } from "react";
 import { StatusPill } from "@/components/ui";
 import { formatDate, statusLabel } from "@/lib/format";
+import { OPERATIONS } from "@/lib/actions/operations";
 import { isRetryable } from "@/lib/actions/rules";
 import type { ActionExecution, Agent, AgentAction } from "@/lib/types";
 
 const EXEC_LABEL: Record<ActionExecution["statut"], string> = {
-  en_cours: "Envoi en cours",
+  en_cours: "En cours",
   envoye: "Envoyé",
-  echec: "Échec d'envoi",
+  fait: "Appliqué",
+  echec: "Échec",
   simule: "Simulé (démo)",
   a_faire: "À envoyer",
 };
 const EXEC_TONE = {
   en_cours: "brand",
   envoye: "ok",
+  fait: "ok",
   echec: "danger",
   simule: "nexus",
   a_faire: "warn",
@@ -48,6 +51,10 @@ export function AgentsClient({
     return edits[action.id] ?? { objet: action.email?.objet ?? "", corps: action.email?.corps ?? "" };
   }
 
+  // Nouveau statut choisi par l'humain, par action (revérifié côté serveur).
+  const [values, setValues] = useState<Record<string, string>>({});
+  const valueOf = (action: AgentAction) => values[action.id] ?? action.operation?.valeur ?? "";
+
   function resolve(actionId: string, decision: "approved" | "rejected" | "renvoyer") {
     const action = actions.find((a) => a.id === actionId);
     startTransition(async () => {
@@ -58,6 +65,7 @@ export function AgentsClient({
           actionId,
           decision,
           ...(decision === "approved" && action?.email ? draftOf(action) : {}),
+          ...(decision === "approved" && action?.operation ? { valeur: valueOf(action) } : {}),
         }),
       });
       const data = await res.json();
@@ -141,6 +149,28 @@ export function AgentsClient({
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-muted">
                   {action.description}
                 </p>
+                {action.operation ? (
+                  <div className="mt-3 max-w-2xl border-l-2 border-nexus/40 pl-3 text-sm">
+                    <p className="text-ink-muted">{OPERATIONS[action.operation.type].libelle}</p>
+                    <p className="mt-1 flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{action.operation.cible?.libelle ?? action.operation.refId}</span>
+                      <span className="text-ink-muted">{action.operation.cible?.actuel ?? "—"} →</span>
+                      <select
+                        value={valueOf(action)}
+                        disabled={pending}
+                        onChange={(e) => setValues({ ...values, [action.id]: e.target.value })}
+                        className="border border-line bg-surface px-2 py-1"
+                        aria-label="Nouveau statut"
+                      >
+                        {OPERATIONS[action.operation.type].valeurs.map((v) => (
+                          <option key={v} value={v}>
+                            {statusLabel(v)}
+                          </option>
+                        ))}
+                      </select>
+                    </p>
+                  </div>
+                ) : null}
                 {action.email ? (
                   <div className="mt-3 max-w-2xl border-l-2 border-brand/40 pl-3 text-sm">
                     <p>
@@ -183,7 +213,13 @@ export function AgentsClient({
                     onClick={() => resolve(action.id, "approved")}
                     className="bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-deep disabled:opacity-50"
                   >
-                    {action.email ? "Approuver et envoyer" : "Approuver"}
+                    {action.email && action.operation
+                      ? "Approuver, appliquer et envoyer"
+                      : action.email
+                        ? "Approuver et envoyer"
+                        : action.operation
+                          ? "Approuver et appliquer"
+                          : "Approuver"}
                   </button>
                   <button
                     type="button"
@@ -215,7 +251,11 @@ export function AgentsClient({
                   <StatusPill label="À réaliser par l'équipe" tone="brand" />
                 )}
                 <span className="font-medium">
-                  {action.email ? action.email.objet : action.type}
+                  {action.email
+                    ? action.email.objet
+                    : action.operation
+                      ? `${OPERATIONS[action.operation.type].libelle} → ${statusLabel(action.operation.valeur)}`
+                      : action.type}
                 </span>
                 <span className="text-xs text-ink-muted">
                   {formatDate(action.timestamp)}
@@ -226,14 +266,14 @@ export function AgentsClient({
                 ) : (
                   <span className="basis-full text-ink-muted">{action.description}</span>
                 )}
-                {action.email && action.execution && isRetryable(action.execution) ? (
+                {(action.email || action.operation) && action.execution && isRetryable(action.execution) ? (
                   <button
                     type="button"
                     disabled={pending}
                     onClick={() => resolve(action.id, "renvoyer")}
                     className="border border-line px-3 py-1 text-xs font-semibold hover:border-brand/40 disabled:opacity-50"
                   >
-                    Renvoyer
+                    Réessayer
                   </button>
                 ) : null}
               </li>

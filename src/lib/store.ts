@@ -3,13 +3,16 @@ import type {
   Agent,
   AgentAction,
   EmailDraft,
+  StatusOperation,
   DashboardMetrics,
   Invoice,
   Learner,
   OpcoDossier,
   TrainingSession,
 } from "./types";
+import { editedOperation } from "./actions/operations";
 import { cleanEdits, isRetryable } from "./actions/rules";
+import { statusLabel } from "./format";
 import { computeMetrics as computeMetricsFrom } from "./metrics";
 
 function daysAgo(n: number): string {
@@ -373,6 +376,34 @@ export const store = {
     return { ...learner };
   },
 
+  updateDossierStatus(id: string, status: OpcoDossier["status"]) {
+    const dossier = opcoDossiers.find((d) => d.id === id);
+    if (!dossier) return null;
+    dossier.status = status;
+    dossier.updatedAt = new Date().toISOString();
+    return { ...dossier };
+  },
+
+  updateInvoiceStatus(id: string, status: Invoice["status"]) {
+    const invoice = invoices.find((i) => i.id === id);
+    if (!invoice) return null;
+    invoice.status = status;
+    return { ...invoice };
+  },
+
+  findOperationTarget(op: StatusOperation) {
+    if (op.type === "statut_apprenant") {
+      const l = learners.find((x) => x.id === op.refId);
+      return l ? { libelle: `${l.prenom} ${l.nom}`, actuel: statusLabel(l.status) } : null;
+    }
+    if (op.type === "statut_dossier") {
+      const d = opcoDossiers.find((x) => x.id === op.refId);
+      return d ? { libelle: `Dossier ${d.reference} (${d.organisme})`, actuel: statusLabel(d.status) } : null;
+    }
+    const i = invoices.find((x) => x.id === op.refId);
+    return i ? { libelle: `Facture ${i.numero} (${i.client})`, actuel: statusLabel(i.status) } : null;
+  },
+
   /** Paiement reçu : statut « payée » et date de paiement (AAAA-MM-JJ). */
   markInvoicePaid(id: string, payeeLe: string) {
     const invoice = invoices.find((i) => i.id === id);
@@ -397,7 +428,7 @@ export const store = {
   resolveHitl(
     actionId: string,
     decision: "approved" | "rejected",
-    edits?: { objet?: string; corps?: string },
+    edits?: { objet?: string; corps?: string; valeur?: string },
     decidePar?: string,
   ) {
     const action = agentActions.find((a) => a.id === actionId);
@@ -407,6 +438,9 @@ export const store = {
     action.decideLe = new Date().toISOString();
     if (decision === "approved" && action.email) {
       action.email = { ...action.email, ...cleanEdits(edits) };
+    }
+    if (decision === "approved" && action.operation) {
+      action.operation = editedOperation(action.operation, edits?.valeur);
     }
     const agent = agents.find((a) => a.id === action.agentId);
     if (agent && agent.status === "en_attente_hitl") {
@@ -452,6 +486,7 @@ export const store = {
         description: string;
         requiresHitl: boolean;
         email?: EmailDraft | null;
+        operation?: StatusOperation | null;
       }>;
     },
     model: string,
@@ -468,6 +503,7 @@ export const store = {
       requiresHitl: a.requiresHitl,
       hitlStatus: a.requiresHitl ? "pending" : undefined,
       ...(a.email ? { email: a.email } : {}),
+      ...(a.operation ? { operation: a.operation } : {}),
     }));
     agentActions.unshift(...created);
     agent.derniereAction = proposal.resume;

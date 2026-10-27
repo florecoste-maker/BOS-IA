@@ -123,6 +123,8 @@ export interface AgentAction {
   hitlStatus?: "pending" | "approved" | "rejected";
   /** Brouillon d'e-mail : le destinataire est résolu côté serveur, jamais fourni par le modèle. */
   email?: EmailDraft;
+  /** Changement de statut d'une fiche existante, appliqué après approbation. */
+  operation?: StatusOperation;
   /** Résultat de l'exécution après approbation. */
   execution?: ActionExecution;
   /** Auteur et date de la décision humaine. */
@@ -140,8 +142,21 @@ export interface EmailDraft {
   destinataire?: { nom: string; email: string | null };
 }
 
+export type OperationType = "statut_apprenant" | "statut_dossier" | "statut_facture";
+
+export interface StatusOperation {
+  type: OperationType;
+  /** id de l'apprenant, du dossier OPCO ou de la facture. */
+  refId: string;
+  /** Nouveau statut (liste fermée par type, voir lib/actions/operations). */
+  valeur: string;
+  /** Renseigné pour l'affichage (fiche et statut actuel), jamais stocké. */
+  cible?: { libelle: string; actuel: string };
+}
+
 export interface ActionExecution {
-  statut: "en_cours" | "envoye" | "echec" | "simule" | "a_faire";
+  /** « fait » : changement de statut appliqué, sans e-mail. */
+  statut: "en_cours" | "envoye" | "fait" | "echec" | "simule" | "a_faire";
   le: string;
   message: string;
 }

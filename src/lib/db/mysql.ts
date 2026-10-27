@@ -6,7 +6,9 @@
 import { randomUUID } from "node:crypto";
 import mysql, { type Pool, type PoolConnection, type RowDataPacket } from "mysql2/promise";
 import { computeMetrics } from "@/lib/metrics";
+import { editedOperation } from "@/lib/actions/operations";
 import { STALE_EXECUTION_MS, cleanEdits } from "@/lib/actions/rules";
+import { statusLabel } from "@/lib/format";
 import { store } from "@/lib/store";
 import type {
   ActionExecution,
@@ -16,6 +18,7 @@ import type {
   AuditEntry,
   EmailDraft,
   Invoice,
+  StatusOperation,
   Learner,
   OpcoDossier,
   TrainingSession,
@@ -149,6 +152,9 @@ export const MIGRATIONS: Array<{ table: string; column: string; ddl: string }> =
   { table: "bos_agent_actions", column: "exec_message", ddl: "TEXT NULL" },
   { table: "bos_agent_actions", column: "decide_par", ddl: "VARCHAR(255) NULL" },
   { table: "bos_agent_actions", column: "decide_le", ddl: "DATETIME(3) NULL" },
+  { table: "bos_agent_actions", column: "op_type", ddl: "VARCHAR(32) NULL" },
+  { table: "bos_agent_actions", column: "op_ref", ddl: "VARCHAR(64) NULL" },
+  { table: "bos_agent_actions", column: "op_valeur", ddl: "VARCHAR(32) NULL" },
 ];
 
 async function migrate(pool: Pool) {
@@ -397,6 +403,15 @@ function toAction(r: Row): AgentAction {
           },
         }
       : {}),
+    ...(r.op_type
+      ? {
+          operation: {
+            type: r.op_type as StatusOperation["type"],
+            refId: String(r.op_ref),
+            valeur: String(r.op_valeur),
+          },
+        }
+      : {}),
     ...(r.decide_par ? { decidePar: String(r.decide_par) } : {}),
     ...(r.decide_le ? { decideLe: fromSqlDateTime(String(r.decide_le)) } : {}),
     ...(r.exec_statut
@@ -550,6 +565,39 @@ export const mysqlRepository: Repository = {
     return result.affectedRows ? findLearner(id) : null;
   },
 
+  async updateDossierStatus(id, status) {
+    const [result] = await (await db()).execute<mysql.ResultSetHeader>(
+      "UPDATE bos_opco_dossiers SET status = ?, updated_at = ? WHERE id = ?",
+      [status, toSqlDateTime(new Date().toISOString()), id],
+    );
+    if (!result.affectedRows) return null;
+    const rows = await select("SELECT * FROM bos_opco_dossiers WHERE id = ?", toDossier, [id]);
+    return rows[0] ?? null;
+  },
+
+  async updateInvoiceStatus(id, status) {
+    const [result] = await (await db()).execute<mysql.ResultSetHeader>(
+      "UPDATE bos_invoices SET status = ? WHERE id = ?",
+      [status, id],
+    );
+    if (!result.affectedRows) return null;
+    const rows = await select("SELECT * FROM bos_invoices WHERE id = ?", toInvoice, [id]);
+    return rows[0] ?? null;
+  },
+
+  async findOperationTarget(op) {
+    if (op.type === "statut_apprenant") {
+      const l = await findLearner(op.refId);
+      return l ? { libelle: `${l.prenom} ${l.nom}`, actuel: statusLabel(l.status) } : null;
+    }
+    if (op.type === "statut_dossier") {
+      const d = (await select("SELECT * FROM bos_opco_dossiers WHERE id = ?", toDossier, [op.refId]))[0];
+      return d ? { libelle: `Dossier ${d.reference} (${d.organisme})`, actuel: statusLabel(d.status) } : null;
+    }
+    const i = (await select("SELECT * FROM bos_invoices WHERE id = ?", toInvoice, [op.refId]))[0];
+    return i ? { libelle: `Facture ${i.numero} (${i.client})`, actuel: statusLabel(i.status) } : null;
+  },
+
   async markInvoicePaid(id, payeeLe) {
     const [result] = await (await db()).execute<mysql.ResultSetHeader>(
       "UPDATE bos_invoices SET status = 'payee', payee_le = ? WHERE id = ?",
@@ -584,10 +632,14 @@ export const mysqlRepository: Repository = {
       // Une décision ne se prend qu'une fois : pas de double envoi sur double clic.
       if (!action || !action.requiresHitl || action.hitlStatus !== "pending") return null;
       const changes = decision === "approved" && action.email ? cleanEdits(edits) : {};
+      // Valeur de statut choisie par l'humain : revérifiée contre la liste autorisée.
+      const operation =
+        decision === "approved" && action.operation ? editedOperation(action.operation, edits?.valeur) : action.operation;
       const decideLe = new Date().toISOString();
       await conn.execute(
         `UPDATE bos_agent_actions SET hitl_status = ?, decide_par = ?, decide_le = ?,
-           email_objet = COALESCE(?, email_objet), email_corps = COALESCE(?, email_corps)
+           email_objet = COALESCE(?, email_objet), email_corps = COALESCE(?, email_corps),
+           op_valeur = COALESCE(?, op_valeur)
          WHERE id = ?`,
         [
           decision,
@@ -595,9 +647,11 @@ export const mysqlRepository: Repository = {
           toSqlDateTime(decideLe),
           changes.objet ?? null,
           changes.corps ?? null,
+          operation?.valeur ?? null,
           actionId,
         ],
       );
+      if (operation) action.operation = operation;
       action.decidePar = decidePar;
       action.decideLe = decideLe;
       if (action.email) action.email = { ...action.email, ...changes };
@@ -669,13 +723,14 @@ export const mysqlRepository: Repository = {
         requiresHitl: a.requiresHitl,
         hitlStatus: a.requiresHitl ? "pending" : undefined,
         ...(a.email ? { email: a.email } : {}),
+        ...(a.operation ? { operation: a.operation } : {}),
       }));
       for (const action of created) {
         await conn.execute(
           `INSERT INTO bos_agent_actions
              (id, agent_id, type, description, created_at, requires_hitl, hitl_status, model,
-              email_cible, email_ref, email_objet, email_corps)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              email_cible, email_ref, email_objet, email_corps, op_type, op_ref, op_valeur)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             action.id,
             agentId,
@@ -689,6 +744,9 @@ export const mysqlRepository: Repository = {
             action.email?.refId ?? null,
             action.email?.objet ?? null,
             action.email?.corps ?? null,
+            action.operation?.type ?? null,
+            action.operation?.refId ?? null,
+            action.operation?.valeur ?? null,
           ],
         );
       }

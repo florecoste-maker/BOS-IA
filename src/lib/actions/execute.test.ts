@@ -145,6 +145,94 @@ describe("Décision et exécution (mode démonstration)", () => {
   });
 });
 
+describe("Changements de statut approuvés (mode démonstration)", () => {
+  it("applique le statut choisi par l'humain, une seule fois", async () => {
+    const repo = await getRepository();
+    const learner = store.getLearners().find((l) => l.status !== "abandon")!;
+    const run = store.recordAgentRun(
+      "agt-004",
+      {
+        resume: "r",
+        actions: [
+          {
+            type: "ghost",
+            description: "Passer en ghost learner",
+            requiresHitl: true,
+            operation: { type: "statut_apprenant", refId: learner.id, valeur: "inactif" },
+          },
+        ],
+      },
+      "m",
+    )!;
+    const [shown] = await withRecipients(repo, [run.actions[0]]);
+    assert.equal(shown.operation?.cible?.libelle, `${learner.prenom} ${learner.nom}`);
+
+    const decided = await decideAction(repo, run.actions[0].id, "approved", { valeur: "abandon" }, "Léa");
+    assert.equal(decided.execution?.statut, "fait");
+    assert.match(decided.execution!.message, /→ Abandon/);
+    assert.equal(store.getLearners().find((l) => l.id === learner.id)?.status, "abandon");
+    assert.equal(decided.decidePar, "Léa");
+    await assert.rejects(() => retryAction(repo, run.actions[0].id), ActionError, "déjà appliqué");
+  });
+
+  it("ignore une valeur non autorisée choisie à l'approbation", async () => {
+    const repo = await getRepository();
+    const invoice = store.getInvoices()[0];
+    const run = store.recordAgentRun(
+      "agt-005",
+      {
+        resume: "r",
+        actions: [
+          {
+            type: "relance",
+            description: "Facture en relance",
+            requiresHitl: true,
+            operation: { type: "statut_facture", refId: invoice.id, valeur: "relance" },
+          },
+        ],
+      },
+      "m",
+    )!;
+    const decided = await decideAction(repo, run.actions[0].id, "approved", { valeur: "payee" });
+    assert.equal(decided.operation?.valeur, "relance");
+    assert.equal(store.getInvoices()[0].status, "relance");
+  });
+
+  it("combine statut et e-mail, et n'envoie rien si la fiche a disparu", async () => {
+    const repo = await getRepository();
+    const learner = store.getLearners()[1];
+    const both = store.recordAgentRun(
+      "agt-004",
+      {
+        resume: "r",
+        actions: [
+          {
+            type: "reprise",
+            description: "Relancer et repasser en formation",
+            requiresHitl: true,
+            email: { cible: "apprenant", refId: learner.id, objet: "Reprise", corps: "Bonjour" },
+            operation: { type: "statut_apprenant", refId: learner.id, valeur: "en_formation" },
+          },
+          {
+            type: "fantome",
+            description: "Fiche inexistante",
+            requiresHitl: true,
+            email: { cible: "apprenant", refId: learner.id, objet: "x", corps: "y" },
+            operation: { type: "statut_dossier", refId: "opco-inexistant", valeur: "transmis" },
+          },
+        ],
+      },
+      "m",
+    )!;
+    const ok = await decideAction(repo, both.actions[0].id, "approved");
+    assert.equal(ok.execution?.statut, "simule");
+    assert.match(ok.execution!.message, /→ En formation ; Mode démonstration/);
+    const ko = await decideAction(repo, both.actions[1].id, "approved");
+    assert.equal(ko.execution?.statut, "echec");
+    assert.match(ko.execution!.message, /Fiche introuvable/);
+  });
+});
+
 describe("Règles HITL partagées", () => {
   it("nettoie le brouillon modifié (objet sur une ligne, bornes)", async () => {
     const { cleanEdits } = await import("./rules");

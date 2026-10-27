@@ -15,6 +15,7 @@ import type {
   Invoice,
   Learner,
   OpcoDossier,
+  StatusOperation,
   TrainingSession,
   User,
   AuditEntry,
@@ -36,6 +37,13 @@ export interface UserPatch {
   passwordHash?: string;
 }
 
+/** Modifications humaines à l'approbation : texte de l'e-mail, valeur du statut. */
+export interface HitlEdits {
+  objet?: string;
+  corps?: string;
+  valeur?: string;
+}
+
 export interface AuditFilter {
   limit?: number;
   utilisateurId?: string;
@@ -49,6 +57,7 @@ export interface AgentProposalInput {
     description: string;
     requiresHitl: boolean;
     email?: EmailDraft | null;
+    operation?: StatusOperation | null;
   }>;
 }
 
@@ -86,9 +95,13 @@ export interface Repository {
   resolveHitl(
     actionId: string,
     decision: "approved" | "rejected",
-    edits?: { objet?: string; corps?: string },
+    edits?: HitlEdits,
     decidePar?: string,
   ): Promise<AgentAction | null>;
+  updateDossierStatus(id: string, status: OpcoDossier["status"]): Promise<OpcoDossier | null>;
+  updateInvoiceStatus(id: string, status: Invoice["status"]): Promise<Invoice | null>;
+  /** Fiche visée par une opération et son statut actuel (affichage), null si introuvable. */
+  findOperationTarget(op: StatusOperation): Promise<{ libelle: string; actuel: string } | null>;
   /** Réserve l'exécution d'une action approuvée ; null si déjà en cours ou faite. */
   claimExecution(actionId: string): Promise<AgentAction | null>;
   finishExecution(actionId: string, execution: ActionExecution): Promise<void>;
@@ -140,6 +153,9 @@ const demoRepository: Repository = {
   validateComprehension: async (id, score) => store.validateComprehension(id, score),
   completeOpcoDossier: async (id) => store.completeOpcoDossier(id),
   markInvoicePaid: async (id, payeeLe) => store.markInvoicePaid(id, payeeLe),
+  updateDossierStatus: async (id, status) => store.updateDossierStatus(id, status),
+  updateInvoiceStatus: async (id, status) => store.updateInvoiceStatus(id, status),
+  findOperationTarget: async (op) => store.findOperationTarget(op),
   resolveHitl: async (actionId, decision, edits, decidePar) =>
     store.resolveHitl(actionId, decision, edits, decidePar),
   claimExecution: async (actionId) => store.claimExecution(actionId),
