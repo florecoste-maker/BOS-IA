@@ -37,12 +37,20 @@ export default async function DashboardPage() {
         <Metric
           label="Délai paiement"
           value={metrics.delaiPaiementMoyen === null ? "—" : `${metrics.delaiPaiementMoyen} j`}
-          hint={metrics.delaiPaiementMoyen === null ? "Non calculé (dates de paiement absentes)" : "Cible < 30 jours"}
+          hint={
+            metrics.delaiPaiementMoyen === null
+              ? "Aucune facture payée datée (12 mois)"
+              : `Cible < 30 j · ${metrics.delaiPaiementBase} facture${metrics.delaiPaiementBase > 1 ? "s" : ""} payée${metrics.delaiPaiementBase > 1 ? "s" : ""}`
+          }
         />
         <Metric
           label="MRR"
           value={metrics.mrr === null ? "—" : formatMoney(metrics.mrr)}
-          hint={`${metrics.agentsActifs} agents actifs`}
+          hint={
+            metrics.mrr === null
+              ? "Aucune facture d'abonnement"
+              : `${metrics.abonnementsActifs} abonnement${metrics.abonnementsActifs > 1 ? "s" : ""} en cours`
+          }
         />
       </section>
 

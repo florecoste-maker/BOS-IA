@@ -10,12 +10,29 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-  const body = (await request.json()) as {
-    dossierId: string;
-    action: "complete";
+  const body = (await request.json().catch(() => ({}))) as {
+    dossierId?: string;
+    invoiceId?: string;
+    action?: "complete" | "payee";
+    payeeLe?: string;
   };
 
-  if (body.action === "complete") {
+  if (body.action === "payee" && body.invoiceId) {
+    const today = new Date().toISOString().slice(0, 10);
+    // Un jour de marge : « aujourd'hui » à Paris peut être demain en UTC.
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    const date = body.payeeLe ?? today;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)) || date > tomorrow) {
+      return NextResponse.json({ error: "Date de paiement invalide (pas de date future)" }, { status: 400 });
+    }
+    const invoice = await (await getRepository()).markInvoicePaid(body.invoiceId, date);
+    if (!invoice) {
+      return NextResponse.json({ error: "Facture introuvable" }, { status: 404 });
+    }
+    return NextResponse.json({ invoice });
+  }
+
+  if (body.action === "complete" && body.dossierId) {
     const dossier = await (await getRepository()).completeOpcoDossier(body.dossierId);
     if (!dossier) {
       return NextResponse.json({ error: "Dossier introuvable" }, { status: 404 });

@@ -58,6 +58,8 @@ export interface Repository {
   updateLearnerStatus(id: string, status: Learner["status"]): Promise<Learner | null>;
   validateComprehension(id: string, score: number): Promise<Learner | null>;
   completeOpcoDossier(id: string): Promise<OpcoDossier | null>;
+  /** Paiement reçu à la date donnée (AAAA-MM-JJ). */
+  markInvoicePaid(id: string, payeeLe: string): Promise<Invoice | null>;
   /** Décision humaine sur une action en attente (null si introuvable ou déjà tranchée). */
   resolveHitl(
     actionId: string,
@@ -97,6 +99,7 @@ const demoRepository: Repository = {
   updateLearnerStatus: async (id, status) => store.updateLearnerStatus(id, status),
   validateComprehension: async (id, score) => store.validateComprehension(id, score),
   completeOpcoDossier: async (id) => store.completeOpcoDossier(id),
+  markInvoicePaid: async (id, payeeLe) => store.markInvoicePaid(id, payeeLe),
   resolveHitl: async (actionId, decision, edits) => store.resolveHitl(actionId, decision, edits),
   claimExecution: async (actionId) => store.claimExecution(actionId),
   finishExecution: async (actionId, execution) => store.finishExecution(actionId, execution),

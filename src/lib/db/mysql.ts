@@ -114,6 +114,8 @@ export const SCHEMA = [
  */
 export const MIGRATIONS: Array<{ table: string; column: string; ddl: string }> = [
   { table: "bos_invoices", column: "email_client", ddl: "VARCHAR(255) NULL" },
+  { table: "bos_invoices", column: "payee_le", ddl: "DATE NULL" },
+  { table: "bos_invoices", column: "recurrence", ddl: "VARCHAR(16) NULL" },
   { table: "bos_agent_actions", column: "email_cible", ddl: "VARCHAR(16) NULL" },
   { table: "bos_agent_actions", column: "email_ref", ddl: "VARCHAR(64) NULL" },
   { table: "bos_agent_actions", column: "email_objet", ddl: "VARCHAR(255) NULL" },
@@ -255,8 +257,13 @@ export function parseJsonArray(value: unknown): string[] {
 }
 
 /** Jours de retard calculés à la lecture : une facture payée n'est jamais en retard. */
-export function daysLate(echeance: string, status: Invoice["status"], now = today()) {
-  if (status === "payee") return 0;
+export function daysLate(
+  echeance: string,
+  status: Invoice["status"],
+  now = today(),
+  payeeLe?: string,
+) {
+  if (status === "payee" || payeeLe) return 0;
   const diff = (Date.parse(now) - Date.parse(echeance)) / 86_400_000;
   return diff > 0 ? Math.floor(diff) : 0;
 }
@@ -313,6 +320,7 @@ function toDossier(r: Row): OpcoDossier {
 function toInvoice(r: Row): Invoice {
   const status = r.status as Invoice["status"];
   const echeance = String(r.echeance);
+  const payeeLe = r.payee_le == null ? undefined : String(r.payee_le);
   return {
     id: String(r.id),
     numero: String(r.numero),
@@ -323,8 +331,10 @@ function toInvoice(r: Row): Invoice {
     status,
     emiseLe: String(r.emise_le),
     echeance,
-    joursRetard: daysLate(echeance, status),
+    joursRetard: daysLate(echeance, status, undefined, payeeLe),
     emailClient: r.email_client == null ? undefined : String(r.email_client),
+    payeeLe,
+    recurrence: r.recurrence == null ? undefined : (r.recurrence as Invoice["recurrence"]),
   };
 }
 
@@ -485,6 +495,16 @@ export const mysqlRepository: Repository = {
       ],
     );
     return result.affectedRows ? findLearner(id) : null;
+  },
+
+  async markInvoicePaid(id, payeeLe) {
+    const [result] = await (await db()).execute<mysql.ResultSetHeader>(
+      "UPDATE bos_invoices SET status = 'payee', payee_le = ? WHERE id = ?",
+      [payeeLe, id],
+    );
+    if (!result.affectedRows) return null;
+    const rows = await select("SELECT * FROM bos_invoices WHERE id = ?", toInvoice, [id]);
+    return rows[0] ?? null;
   },
 
   async completeOpcoDossier(id) {

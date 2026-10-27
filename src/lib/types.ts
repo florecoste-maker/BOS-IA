@@ -87,7 +87,13 @@ export interface Invoice {
   joursRetard: number;
   /** Adresse du client pour les relances (facultative). */
   emailClient?: string;
+  /** Date de paiement effectif (AAAA-MM-JJ) : sert au délai de paiement moyen. */
+  payeeLe?: string;
+  /** Facture d'abonnement : sert au MRR (montant ramené au mois). */
+  recurrence?: InvoiceRecurrence;
 }
+
+export type InvoiceRecurrence = "mensuel" | "trimestriel" | "annuel";
 
 export type AgentTier = "QAA" | "IPOA" | "FCA" | "MDGA";
 export type AgentAutonomy =
@@ -142,10 +148,14 @@ export interface DashboardMetrics {
   ghostLearners: number;
   dossiersOpcoOuverts: number;
   facturesEnRetard: number;
-  /** null : non calculable avec les données disponibles. */
+  /** Jours entre émission et paiement, moyenne sur 12 mois ; null sans facture payée datée. */
   delaiPaiementMoyen: number | null;
-  /** null : non calculable avec les données disponibles. */
+  /** Nombre de factures payées prises en compte dans le délai moyen. */
+  delaiPaiementBase: number;
+  /** Revenu mensuel récurrent HT ; null sans facture d'abonnement. */
   mrr: number | null;
+  /** Abonnements dont la période couvre aujourd'hui. */
+  abonnementsActifs: number;
   agentsActifs: number;
   actionsHitl: number;
   pipelineCompletions: number;
