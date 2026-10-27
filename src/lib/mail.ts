@@ -103,13 +103,60 @@ export async function sendMail(
   return { to: prepared.to, messageId: info.messageId as string | undefined };
 }
 
+/** Adresse seule de « Nom <adresse> » ou « adresse ». */
+export function addressOf(value: string) {
+  return (value.match(/<([^<>]+)>/)?.[1] ?? value).trim().toLowerCase();
+}
+
+const domainOf = (address: string) => address.split("@")[1] ?? "";
+
+/**
+ * Réglages qui passent la vérification mais font échouer ou classer en spam les
+ * envois : à corriger avant d'envoyer aux apprenants.
+ */
+export function mailWarnings(config: MailConfig) {
+  const warnings: string[] = [];
+  const from = addressOf(config.from);
+  if (!isEmail(from)) {
+    warnings.push(`SMTP_FROM « ${config.from} » ne contient pas d'adresse valide (ex. Jamaliance <contact@jamaliance.com>)`);
+  } else if (config.user && isEmail(config.user) && domainOf(from) !== domainOf(config.user.toLowerCase())) {
+    warnings.push(
+      `L'expéditeur (${from}) n'est pas sur le domaine du compte SMTP (${config.user}) : la plupart des serveurs refusent ou classent en spam. Utilisez une adresse de ${domainOf(config.user.toLowerCase())}.`,
+    );
+  }
+  if (config.port === 465 && !config.secure) warnings.push("Port 465 avec SMTP_SECURE=false : le port 465 exige SMTP_SECURE=true (ou laissez-le vide)");
+  if (config.port === 587 && config.secure) warnings.push("Port 587 avec SMTP_SECURE=true : le port 587 exige SMTP_SECURE=false (ou laissez-le vide)");
+  if (config.user && !config.password) warnings.push("SMTP_USER est défini mais SMTP_PASSWORD est vide");
+  return warnings;
+}
+
+/** Message utile pour une erreur nodemailer, sans jamais citer le mot de passe. */
+export function describeMailError(error: unknown, config: MailConfig) {
+  const { code, responseCode, response } = error as { code?: string; responseCode?: number; response?: string };
+  const google = /gmail|google/i.test(config.host);
+  if (code === "EAUTH" || responseCode === 535) {
+    return google
+      ? "Identifiant ou mot de passe refusé : Google exige un mot de passe d'application (Compte Google → Sécurité → Validation en deux étapes → Mots de passe des applications)"
+      : "Identifiant ou mot de passe refusé : SMTP_USER doit être l'adresse e-mail complète et SMTP_PASSWORD le mot de passe de cette boîte";
+  }
+  const message = String((error as Error).message ?? "");
+  if (code === "EDNS" || /ENOTFOUND|EAI_AGAIN/.test(message)) return `Serveur « ${config.host} » introuvable : vérifiez SMTP_HOST`;
+  if (code === "ETIMEDOUT" || code === "ECONNECTION" || /ECONNREFUSED|ETIMEDOUT|ECONNRESET/.test(message)) {
+    return `Serveur ${config.host}:${config.port} injoignable : vérifiez le port (465 ou 587)`;
+  }
+  if (/wrong version number|ssl|tls|certificate/i.test(message)) {
+    return `Échec du chiffrement sur le port ${config.port} : 465 = SMTP_SECURE=true, 587 = SMTP_SECURE=false`;
+  }
+  if (responseCode && response) return `Refus du serveur (${responseCode}) : ${response.slice(0, 160)}`;
+  return code ? `Connexion SMTP refusée (${code})` : "Connexion SMTP impossible";
+}
+
 /** Teste la connexion et l'authentification SMTP (pour /app/integrations). */
 export async function verifyMail(config: MailConfig): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
     await transport(config).verify();
     return { ok: true };
   } catch (error) {
-    const code = (error as { code?: string; responseCode?: number }).code;
-    return { ok: false, message: code ? `Connexion SMTP refusée (${code})` : "Connexion SMTP impossible" };
+    return { ok: false, message: describeMailError(error, config) };
   }
 }

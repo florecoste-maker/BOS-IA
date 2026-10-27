@@ -18,6 +18,8 @@ export const AUDIT_LABELS: Record<string, string> = {
   hitl_refuse: "Proposition refusée",
   email_renvoye: "E-mail renvoyé",
   email_execution: "Envoi d'e-mail",
+  email_test: "E-mail de test envoyé",
+  email_test_echec: "E-mail de test en échec",
   analyse_lancee: "Analyse IA lancée",
   import: "Import",
   export: "Export",

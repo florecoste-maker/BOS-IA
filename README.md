@@ -226,10 +226,34 @@ Garde-fous :
 - `BOS_EMAIL_REDIRECTION` (mode test) envoie tout vers votre adresse, le
   destinataire prévu étant indiqué dans l'objet.
 
-Configuration (hPanel) : `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
-`SMTP_FROM` — voir `.env.example` pour Google Workspace et la messagerie Hostinger.
-`/app/integrations` → carte « E-mails (SMTP) » vérifie la connexion. Pour les
-relances de factures, importer les factures avec la colonne `email_client`.
+### Configurer l'envoi (SMTP)
+
+Variables dans hPanel → Web App → Variables d'environnement, puis redéployer :
+
+| Variable | Messagerie Hostinger | Google Workspace |
+| --- | --- | --- |
+| `SMTP_HOST` | `smtp.hostinger.com` | `smtp.gmail.com` |
+| `SMTP_PORT` | `465` | `587` |
+| `SMTP_USER` | `contact@jamaliance.com` (adresse complète) | `contact@jamaliance.com` |
+| `SMTP_PASSWORD` | mot de passe de la boîte | mot de passe d'application (16 lettres) |
+| `SMTP_FROM` | `Jamaliance <contact@jamaliance.com>` | idem |
+| `BOS_EMAIL_REDIRECTION` | votre adresse, pendant les essais | idem |
+
+`SMTP_SECURE` est déduit du port (465 → chiffré d'emblée, 587 → STARTTLS) ;
+ne le renseigner que pour un serveur atypique. Google : mot de passe d'application
+via Compte Google → Sécurité → Validation en deux étapes → Mots de passe des
+applications. L'adresse de `SMTP_FROM` doit appartenir au compte `SMTP_USER`
+(sinon refus ou spam).
+
+Vérification (`/app/integrations`, carte « E-mails (SMTP) ») : connexion et
+identifiants testés à l'ouverture, erreurs de réglage signalées (port et
+chiffrement incohérents, expéditeur d'un autre domaine, mot de passe vide), et
+bouton « Envoyer le test » (administrateurs, inscrit au journal) qui envoie un
+vrai message à l'adresse choisie. S'il arrive en spam : vérifier SPF et DKIM du
+domaine (hPanel → Domaines → DNS). Une fois les essais concluants, vider
+`BOS_EMAIL_REDIRECTION` pour que les e-mails approuvés partent aux vrais
+destinataires. Pour les relances de factures, importer les factures avec la
+colonne `email_client`.
 
 ### Changements de statut
 

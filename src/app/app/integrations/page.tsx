@@ -1,10 +1,12 @@
 import { SectionTitle } from "@/components/ui";
 import { IntegrationsPanel } from "@/components/integrations-panel";
 import { TidyCalEmbed } from "@/components/tidycal-embed";
+import { getActor } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-export default function IntegrationsPage() {
+export default async function IntegrationsPage() {
+  const actor = await getActor();
   return (
     <>
       <SectionTitle
@@ -14,7 +16,7 @@ export default function IntegrationsPage() {
       />
 
       <section className="border-y border-line bg-surface/60 py-8">
-        <IntegrationsPanel />
+        <IntegrationsPanel isAdmin={actor?.role === "admin"} />
       </section>
 
       <section className="mt-14">
