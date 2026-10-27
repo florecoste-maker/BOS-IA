@@ -3,10 +3,11 @@
  * L'agent analyse les données du cockpit et PROPOSE des actions ; rien n'est
  * exécuté automatiquement. Les actions sensibles passent par la file HITL.
  */
+import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { brand } from "@/lib/brand";
 import { getRepository, type Repository } from "@/lib/data";
-import type { Agent } from "@/lib/types";
+import type { Agent, AgentRunLog } from "@/lib/types";
 
 export const DEFAULT_AGENTS_MODEL = "claude-opus-5-5";
 const MAX_ACTIONS = 3;
@@ -105,10 +106,45 @@ export class AgentRunError extends Error {
   }
 }
 
-export async function runAgent(agentId: string) {
+/**
+ * Lance l'analyse d'un agent et la journalise (succès ou échec) dans l'historique.
+ * `declencheur` : clic dans le cockpit (manuel) ou planificateur (planifie).
+ */
+export async function runAgent(agentId: string, declencheur: AgentRunLog["declencheur"] = "manuel") {
   const repo = await getRepository();
   const agent = (await repo.getAgents()).find((a) => a.id === agentId);
   if (!agent) throw new AgentRunError("Agent introuvable", 404);
+
+  const debut = new Date().toISOString();
+  const log = (entry: Pick<AgentRunLog, "statut" | "message" | "actions" | "model">) =>
+    repo
+      .logAgentRun({
+        id: `run-${randomUUID()}`,
+        agentId,
+        declencheur,
+        debut,
+        fin: new Date().toISOString(),
+        ...entry,
+      })
+      .catch((error) => console.error("Journal d'exécution d'agent non enregistré", error));
+
+  try {
+    const run = await analyse(repo, agent);
+    await log({
+      statut: "succes",
+      message: run?.resume ?? "",
+      actions: run?.actions.length ?? 0,
+      model: run?.model,
+    });
+    return run;
+  } catch (error) {
+    const message = error instanceof AgentRunError ? error.message : "Erreur interne";
+    await log({ statut: "echec", message, actions: 0 });
+    throw error;
+  }
+}
+
+async function analyse(repo: Repository, agent: Agent) {
 
   const { apiKey, model, configured } = getAgentsConfig();
   if (!configured) {

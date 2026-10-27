@@ -8,6 +8,7 @@ import { store } from "./store";
 import type {
   Agent,
   AgentAction,
+  AgentRunLog,
   DashboardMetrics,
   Invoice,
   Learner,
@@ -60,7 +61,15 @@ export interface Repository {
     model: string,
   ): Promise<AgentRunRecord | null>;
   emitProofToCash(learnerId: string): Promise<ProofToCashResult>;
+  /** Historique des exécutions d'agents, plus récentes d'abord. */
+  logAgentRun(run: AgentRunLog): Promise<void>;
+  getAgentRuns(limit?: number): Promise<AgentRunLog[]>;
+  /** Exécute `work` sous un verrou exclusif ; `null` si déjà pris ailleurs. */
+  withLock<T>(name: string, work: () => Promise<T>): Promise<{ value: T } | null>;
 }
+
+const demoRuns: AgentRunLog[] = [];
+const demoLocks = new Set<string>();
 
 const demoRepository: Repository = {
   mode: "demo",
@@ -78,6 +87,20 @@ const demoRepository: Repository = {
   recordAgentRun: async (agentId, proposal, model) =>
     store.recordAgentRun(agentId, proposal, model),
   emitProofToCash: async (learnerId) => store.emitProofToCash(learnerId),
+  logAgentRun: async (run) => {
+    demoRuns.unshift(run);
+    demoRuns.splice(200);
+  },
+  getAgentRuns: async (limit = 50) => demoRuns.slice(0, limit),
+  async withLock(name, work) {
+    if (demoLocks.has(name)) return null;
+    demoLocks.add(name);
+    try {
+      return { value: await work() };
+    } finally {
+      demoLocks.delete(name);
+    }
+  },
 };
 
 /** Moteur actif, choisi à chaque appel : la configuration est lue à l'exécution. */

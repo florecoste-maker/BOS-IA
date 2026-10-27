@@ -1,8 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, getAuthConfig, verifySessionToken } from "@/lib/auth";
 
-/** Routes ouvertes sans session : connexion et sonde de santé Hostinger. */
-const PUBLIC_API = ["/api/auth/login", "/api/auth/logout", "/api/health"];
+/**
+ * Routes ouvertes sans session : connexion, sonde de santé Hostinger, et
+ * déclencheur des agents planifiés (protégé par son propre secret BOS_CRON_SECRET).
+ */
+const PUBLIC_API = [
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/health",
+  "/api/agents/planifie",
+];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

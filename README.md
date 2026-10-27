@@ -22,6 +22,7 @@
 | Agents IA connectés à l'API Claude (`POST /api/agents/run`) | ✅ Prêt (clé `ANTHROPIC_API_KEY` requise) |
 | Base de données MySQL / MariaDB (données persistantes) | ✅ Prêt (variables `DB_*` requises, sinon mode démo) |
 | Import CSV / Excel (`/app/import`) | ✅ Prêt (nécessite la base) |
+| Agents planifiés (analyse quotidienne) | ✅ Prêt (`BOS_CRON_SECRET` + base + clé Claude) |
 | CI GitHub (lint, tests, build, test MySQL 8) | ✅ Prêt |
 | Config Hostinger `standalone` + `.env.example` | ✅ Prêt |
 | Déploiement sur `app.jamaliance.com` | ✅ En ligne |
@@ -159,8 +160,8 @@ Ne jamais pointer ce dépôt sur la racine jamaliance.com.
 
 ## Sécurité
 
-- `src/proxy.ts` protège `/app/*` et `/api/*` ; seules `/api/health` et
-  `/api/auth/*` sont publiques. Session signée HMAC-SHA256, cookie `httpOnly`,
+- `src/proxy.ts` protège `/app/*` et `/api/*` ; seules `/api/health`,
+  `/api/auth/*` et `/api/agents/planifie` (protégée par son propre secret) sont publiques. Session signée HMAC-SHA256, cookie `httpOnly`,
   `secure`, `SameSite=Lax`, 12 h. 5 échecs de connexion par IP → blocage 15 min.
 - En-têtes HSTS, `X-Frame-Options: DENY`, `nosniff`, `noindex` sur tout le moteur.
 
@@ -173,9 +174,43 @@ et **propose** jusqu'à 3 actions. Rien n'est exécuté automatiquement. Les age
 file de validation humaine, quoi que réponde le modèle. Les e-mails des apprenants
 ne sont pas transmis au modèle.
 
+## Agents planifiés
+
+Chaque jour ouvré, les agents analysent le cockpit sans clic. Un planificateur
+externe appelle `POST /api/agents/planifie` avec le secret `BOS_CRON_SECRET` ; la
+route répond tout de suite (202) et les analyses tournent en arrière-plan.
+
+Garde-fous côté serveur :
+- verrou MySQL : deux appels simultanés ne lancent rien en double ;
+- intervalle minimal de 20 h par agent (`BOS_AGENTS_INTERVALLE_HEURES`) ;
+- un agent dont des propositions attendent une validation humaine n'est pas
+  relancé (la file HITL ne s'empile pas) ; un agent en pause est ignoré ;
+- les propositions suivent les règles habituelles : rien n'est exécuté sans validation.
+
+Chaque exécution (manuelle ou planifiée, succès ou échec) est journalisée et visible
+dans `/app/agents` → « Exécutions ». `/app/integrations` montre l'état et le dernier
+passage.
+
+Mise en place :
+1. Générer un secret : `openssl rand -hex 32`.
+2. hPanel → variables de la Web App : `BOS_CRON_SECRET=<secret>` (la base MySQL et
+   `ANTHROPIC_API_KEY` doivent déjà être configurées), puis redémarrer.
+3. GitHub → dépôt déployé → Settings → Secrets and variables → Actions → secret
+   `BOS_CRON_SECRET` (même valeur). Le workflow « Agents planifiés » tourne du lundi
+   au vendredi à 06:17 UTC ; « Run workflow » le lance à la demande.
+   GitHub suspend les workflows planifiés après 60 jours sans activité sur le dépôt :
+   le réactiver dans l'onglet Actions si besoin.
+4. Alternative ou complément : une tâche cron (hPanel → Avancé → Tâches cron, si
+   l'offre le permet) :
+   `curl -s -X POST -H "Authorization: Bearer <secret>" https://app.jamaliance.com/api/agents/planifie`
+
+`?attendre=1` attend la fin des analyses et renvoie le résultat de chaque agent
+(utile pour tester ; peut dépasser le délai du proxy Hostinger).
+
 ## API intégrations
 
 - `GET /api/health` — sonde publique de déploiement
+- `POST /api/agents/planifie` — déclencheur des agents planifiés (secret `BOS_CRON_SECRET`)
 - `GET /api/integrations/status` — état Hostinger / TidyCal / agents IA (+ sonde live API)
 - `GET /api/integrations/tidycal?view=public|bookings|types|timeslots`
 - `POST /api/integrations/tidycal` — créer un créneau (types gratuits uniquement côté TidyCal)
