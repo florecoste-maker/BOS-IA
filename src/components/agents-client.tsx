@@ -3,7 +3,23 @@
 import { useState, useTransition } from "react";
 import { StatusPill } from "@/components/ui";
 import { formatDate, statusLabel } from "@/lib/format";
-import type { Agent, AgentAction } from "@/lib/types";
+import { isRetryable } from "@/lib/actions/rules";
+import type { ActionExecution, Agent, AgentAction } from "@/lib/types";
+
+const EXEC_LABEL: Record<ActionExecution["statut"], string> = {
+  en_cours: "Envoi en cours",
+  envoye: "Envoyé",
+  echec: "Échec d'envoi",
+  simule: "Simulé (démo)",
+  a_faire: "À envoyer",
+};
+const EXEC_TONE = {
+  en_cours: "brand",
+  envoye: "ok",
+  echec: "danger",
+  simule: "nexus",
+  a_faire: "warn",
+} as const;
 
 function agentTone(agent: Agent) {
   if (agent.status === "en_attente_hitl") return "warn" as const;
@@ -25,12 +41,24 @@ export function AgentsClient({
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function resolve(actionId: string, decision: "approved" | "rejected") {
+  // Brouillons modifiés par l'humain avant approbation, par action.
+  const [edits, setEdits] = useState<Record<string, { objet: string; corps: string }>>({});
+
+  function draftOf(action: AgentAction) {
+    return edits[action.id] ?? { objet: action.email?.objet ?? "", corps: action.email?.corps ?? "" };
+  }
+
+  function resolve(actionId: string, decision: "approved" | "rejected" | "renvoyer") {
+    const action = actions.find((a) => a.id === actionId);
     startTransition(async () => {
       const res = await fetch("/api/agents", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actionId, decision }),
+        body: JSON.stringify({
+          actionId,
+          decision,
+          ...(decision === "approved" && action?.email ? draftOf(action) : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -39,10 +67,13 @@ export function AgentsClient({
       }
       setAgents(data.agents);
       setActions(data.actions);
+      const execution = (data.action as AgentAction | undefined)?.execution;
       setMessage(
-        decision === "approved"
-          ? "Action agent approuvée (HITL)"
-          : "Action agent refusée (HITL)",
+        execution
+          ? `${EXEC_LABEL[execution.statut]} — ${execution.message}`
+          : decision === "approved"
+            ? "Action approuvée : à réaliser par l'équipe"
+            : "Action refusée",
       );
     });
   }
@@ -78,6 +109,7 @@ export function AgentsClient({
   const pendingHitl = actions.filter(
     (a) => a.requiresHitl && a.hitlStatus === "pending",
   );
+  const decided = actions.filter((a) => a.hitlStatus === "approved").slice(0, 10);
 
   return (
     <>
@@ -109,6 +141,41 @@ export function AgentsClient({
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-muted">
                   {action.description}
                 </p>
+                {action.email ? (
+                  <div className="mt-3 max-w-2xl border-l-2 border-brand/40 pl-3 text-sm">
+                    <p>
+                      <span className="text-ink-muted">À : </span>
+                      {action.email.destinataire
+                        ? `${action.email.destinataire.nom} <${action.email.destinataire.email ?? "adresse manquante"}>`
+                        : action.email.refId}
+                    </p>
+                    <label className="mt-2 block">
+                      <span className="text-ink-muted">Objet</span>
+                      <input
+                        value={draftOf(action).objet}
+                        maxLength={200}
+                        disabled={pending}
+                        onChange={(e) =>
+                          setEdits({ ...edits, [action.id]: { ...draftOf(action), objet: e.target.value } })
+                        }
+                        className="mt-1 block w-full border border-line bg-surface px-2 py-1"
+                      />
+                    </label>
+                    <label className="mt-2 block">
+                      <span className="text-ink-muted">Message</span>
+                      <textarea
+                        value={draftOf(action).corps}
+                        maxLength={5000}
+                        rows={8}
+                        disabled={pending}
+                        onChange={(e) =>
+                          setEdits({ ...edits, [action.id]: { ...draftOf(action), corps: e.target.value } })
+                        }
+                        className="mt-1 block w-full border border-line bg-surface px-2 py-1 font-sans"
+                      />
+                    </label>
+                  </div>
+                ) : null}
                 <div className="mt-3 flex gap-2">
                   <button
                     type="button"
@@ -116,7 +183,7 @@ export function AgentsClient({
                     onClick={() => resolve(action.id, "approved")}
                     className="bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-deep disabled:opacity-50"
                   >
-                    Approuver
+                    {action.email ? "Approuver et envoyer" : "Approuver"}
                   </button>
                   <button
                     type="button"
@@ -132,6 +199,45 @@ export function AgentsClient({
           )}
         </ul>
       </section>
+
+      {decided.length ? (
+        <section className="mb-12">
+          <h2 className="font-display text-xl font-semibold">Décisions récentes</h2>
+          <ul className="mt-5 divide-y divide-line border-y border-line">
+            {decided.map((action) => (
+              <li key={action.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-3 text-sm">
+                {action.execution ? (
+                  <StatusPill
+                    label={EXEC_LABEL[action.execution.statut]}
+                    tone={EXEC_TONE[action.execution.statut]}
+                  />
+                ) : (
+                  <StatusPill label="À réaliser par l'équipe" tone="brand" />
+                )}
+                <span className="font-medium">
+                  {action.email ? action.email.objet : action.type}
+                </span>
+                <span className="text-xs text-ink-muted">{formatDate(action.timestamp)}</span>
+                {action.execution?.message ? (
+                  <span className="basis-full text-ink-muted">{action.execution.message}</span>
+                ) : (
+                  <span className="basis-full text-ink-muted">{action.description}</span>
+                )}
+                {action.email && action.execution && isRetryable(action.execution) ? (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => resolve(action.id, "renvoyer")}
+                    className="border border-line px-3 py-1 text-xs font-semibold hover:border-brand/40 disabled:opacity-50"
+                  >
+                    Renvoyer
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section>
         <h2 className="font-display text-xl font-semibold">Agents déployés</h2>

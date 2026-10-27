@@ -6,11 +6,14 @@
 import { randomUUID } from "node:crypto";
 import mysql, { type Pool, type PoolConnection, type RowDataPacket } from "mysql2/promise";
 import { computeMetrics } from "@/lib/metrics";
+import { STALE_EXECUTION_MS, cleanEdits } from "@/lib/actions/rules";
 import { store } from "@/lib/store";
 import type {
+  ActionExecution,
   Agent,
   AgentAction,
   AgentRunLog,
+  EmailDraft,
   Invoice,
   Learner,
   OpcoDossier,
@@ -105,6 +108,33 @@ export const SCHEMA = [
   ) DEFAULT CHARSET=utf8mb4`,
 ];
 
+/**
+ * Colonnes ajoutées après la création initiale des tables. MySQL 8 ne connaît
+ * pas « ADD COLUMN IF NOT EXISTS » : on vérifie dans information_schema.
+ */
+export const MIGRATIONS: Array<{ table: string; column: string; ddl: string }> = [
+  { table: "bos_invoices", column: "email_client", ddl: "VARCHAR(255) NULL" },
+  { table: "bos_agent_actions", column: "email_cible", ddl: "VARCHAR(16) NULL" },
+  { table: "bos_agent_actions", column: "email_ref", ddl: "VARCHAR(64) NULL" },
+  { table: "bos_agent_actions", column: "email_objet", ddl: "VARCHAR(255) NULL" },
+  { table: "bos_agent_actions", column: "email_corps", ddl: "TEXT NULL" },
+  { table: "bos_agent_actions", column: "exec_statut", ddl: "VARCHAR(16) NULL" },
+  { table: "bos_agent_actions", column: "exec_le", ddl: "DATETIME(3) NULL" },
+  { table: "bos_agent_actions", column: "exec_message", ddl: "TEXT NULL" },
+];
+
+async function migrate(pool: Pool) {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'bos\\_%'",
+  );
+  const existing = new Set(rows.map((r) => `${r.t}.${r.c}`));
+  for (const m of MIGRATIONS) {
+    if (!existing.has(`${m.table}.${m.column}`)) {
+      await pool.query(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.ddl}`);
+    }
+  }
+}
+
 /* ---------- connexion ---------- */
 
 interface DbState {
@@ -121,6 +151,7 @@ function configKey(c: DatabaseConfig) {
 
 async function prepare(pool: Pool) {
   for (const statement of SCHEMA) await pool.query(statement);
+  await migrate(pool);
   const [rows] = await pool.query<RowDataPacket[]>("SELECT COUNT(*) AS n FROM bos_agents");
   if (Number(rows[0].n) === 0) {
     for (const agent of store.getAgents()) {
@@ -293,6 +324,7 @@ function toInvoice(r: Row): Invoice {
     emiseLe: String(r.emise_le),
     echeance,
     joursRetard: daysLate(echeance, status),
+    emailClient: r.email_client == null ? undefined : String(r.email_client),
   };
 }
 
@@ -319,6 +351,25 @@ function toAction(r: Row): AgentAction {
     timestamp: fromSqlDateTime(String(r.created_at)),
     requiresHitl: Boolean(Number(r.requires_hitl)),
     hitlStatus: r.hitl_status == null ? undefined : (r.hitl_status as AgentAction["hitlStatus"]),
+    ...(r.email_cible
+      ? {
+          email: {
+            cible: r.email_cible as EmailDraft["cible"],
+            refId: String(r.email_ref),
+            objet: String(r.email_objet ?? ""),
+            corps: String(r.email_corps ?? ""),
+          },
+        }
+      : {}),
+    ...(r.exec_statut
+      ? {
+          execution: {
+            statut: r.exec_statut as ActionExecution["statut"],
+            le: r.exec_le ? fromSqlDateTime(String(r.exec_le)) : "",
+            message: String(r.exec_message ?? ""),
+          },
+        }
+      : {}),
   };
 }
 
@@ -448,7 +499,7 @@ export const mysqlRepository: Repository = {
     return rows[0] ?? null;
   },
 
-  resolveHitl(actionId, decision) {
+  resolveHitl(actionId, decision, edits) {
     return transaction(async (conn) => {
       const actions = await select(
         "SELECT * FROM bos_agent_actions WHERE id = ? FOR UPDATE",
@@ -457,11 +508,16 @@ export const mysqlRepository: Repository = {
         conn,
       );
       const action = actions[0];
-      if (!action || !action.requiresHitl) return null;
-      await conn.execute("UPDATE bos_agent_actions SET hitl_status = ? WHERE id = ?", [
-        decision,
-        actionId,
-      ]);
+      // Une décision ne se prend qu'une fois : pas de double envoi sur double clic.
+      if (!action || !action.requiresHitl || action.hitlStatus !== "pending") return null;
+      const changes = decision === "approved" && action.email ? cleanEdits(edits) : {};
+      await conn.execute(
+        `UPDATE bos_agent_actions SET hitl_status = ?,
+           email_objet = COALESCE(?, email_objet), email_corps = COALESCE(?, email_corps)
+         WHERE id = ?`,
+        [decision, changes.objet ?? null, changes.corps ?? null, actionId],
+      );
+      if (action.email) action.email = { ...action.email, ...changes };
       await conn.execute(
         `UPDATE bos_agents SET status = ?, derniere_action = ?
          WHERE id = ? AND status = 'en_attente_hitl'`,
@@ -473,6 +529,42 @@ export const mysqlRepository: Repository = {
       );
       return { ...action, hitlStatus: decision };
     });
+  },
+
+  async claimExecution(actionId) {
+    const pool = await db();
+    const [result] = await pool.execute<mysql.ResultSetHeader>(
+      `UPDATE bos_agent_actions SET exec_statut = 'en_cours', exec_le = ?, exec_message = ''
+       WHERE id = ? AND hitl_status = 'approved'
+         AND (exec_statut IS NULL OR exec_statut IN ('echec', 'a_faire')
+              OR (exec_statut = 'en_cours' AND exec_le < ?))`,
+      [
+        toSqlDateTime(new Date().toISOString()),
+        actionId,
+        toSqlDateTime(new Date(Date.now() - STALE_EXECUTION_MS).toISOString()),
+      ],
+    );
+    if (!result.affectedRows) return null;
+    const rows = await select("SELECT * FROM bos_agent_actions WHERE id = ?", toAction, [actionId]);
+    return rows[0] ?? null;
+  },
+
+  async finishExecution(actionId, execution) {
+    await (await db()).execute(
+      "UPDATE bos_agent_actions SET exec_statut = ?, exec_le = ?, exec_message = ? WHERE id = ?",
+      [execution.statut, toSqlDateTime(execution.le), execution.message.slice(0, 2000), actionId],
+    );
+  },
+
+  async findRecipient(draft) {
+    if (draft.cible === "apprenant") {
+      const rows = await select("SELECT * FROM bos_learners WHERE id = ?", toLearner, [draft.refId]);
+      const l = rows[0];
+      return l ? { nom: `${l.prenom} ${l.nom}`, email: l.email || null } : null;
+    }
+    const rows = await select("SELECT * FROM bos_invoices WHERE id = ?", toInvoice, [draft.refId]);
+    const i = rows[0];
+    return i ? { nom: i.client, email: i.emailClient ?? null } : null;
   },
 
   recordAgentRun(agentId, proposal, model) {
@@ -493,12 +585,14 @@ export const mysqlRepository: Repository = {
         timestamp,
         requiresHitl: a.requiresHitl,
         hitlStatus: a.requiresHitl ? "pending" : undefined,
+        ...(a.email ? { email: a.email } : {}),
       }));
       for (const action of created) {
         await conn.execute(
           `INSERT INTO bos_agent_actions
-             (id, agent_id, type, description, created_at, requires_hitl, hitl_status, model)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             (id, agent_id, type, description, created_at, requires_hitl, hitl_status, model,
+              email_cible, email_ref, email_objet, email_corps)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             action.id,
             agentId,
@@ -508,6 +602,10 @@ export const mysqlRepository: Repository = {
             action.requiresHitl ? 1 : 0,
             action.hitlStatus ?? null,
             model,
+            action.email?.cible ?? null,
+            action.email?.refId ?? null,
+            action.email?.objet ?? null,
+            action.email?.corps ?? null,
           ],
         );
       }

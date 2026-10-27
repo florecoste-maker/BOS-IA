@@ -38,6 +38,13 @@ type Overview = {
     model: string;
     needsFromUser: string[];
   };
+  emails: {
+    status: "configured" | "partial" | "missing";
+    from: string | null;
+    redirection: string | null;
+    message: string;
+    needsFromUser: string[];
+  };
   agentsPlanifies: {
     status: "configured" | "partial" | "missing";
     intervalHours: number;
@@ -212,6 +219,25 @@ export function IntegrationsPanel() {
         {data.agentsPlanifies.needsFromUser.length > 0 ? (
           <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-ink-muted">
             {data.agentsPlanifies.needsFromUser.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : null}
+      </article>
+
+      <article className="border-l-2 border-accent/50 pl-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="font-display text-lg font-semibold text-ink">E-mails (SMTP)</h3>
+          <StatusPill label={label(data.emails.status)} tone={tone(data.emails.status)} />
+        </div>
+        <ul className="mt-3 space-y-1 text-sm text-ink-muted">
+          {data.emails.from ? <li>Expéditeur : {data.emails.from}</li> : null}
+          {data.emails.message ? <li>{data.emails.message}</li> : null}
+          <li>Envoi uniquement après « Approuver et envoyer » dans la file HITL</li>
+        </ul>
+        {data.emails.needsFromUser.length > 0 ? (
+          <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-ink-muted">
+            {data.emails.needsFromUser.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>

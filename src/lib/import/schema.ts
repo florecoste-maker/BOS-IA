@@ -94,6 +94,7 @@ export const FIELDS: Record<ImportKind, Field[]> = {
   factures: [
     { key: "numero", header: "numero", aliases: ["numero_facture", "facture", "n_facture"], type: "text", required: true, example: "FA-2026-0142", help: "Identifiant unique de la facture" },
     { key: "client", header: "client", aliases: ["entreprise", "societe"], type: "text", required: true, example: "Atelier Nord" },
+    { key: "emailClient", header: "email_client", aliases: ["email", "e_mail", "courriel", "contact"], type: "email", example: "compta@atelier-nord.fr", help: "Adresse utilisée pour les relances" },
     { key: "montant", header: "montant_ht", aliases: ["montant", "total_ht"], type: "decimal", required: true, example: "1490,00" },
     { key: "emiseLe", header: "emise_le", aliases: ["date_emission", "date", "date_facture"], type: "date", required: true, example: "06/10/2026" },
     { key: "echeance", header: "echeance", aliases: ["date_echeance"], type: "date", required: true, example: "05/11/2026" },

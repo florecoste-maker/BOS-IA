@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getAgentsConfig } from "@/lib/agents/claude";
 import { MIN_CRON_SECRET_LENGTH, getScheduleConfig } from "@/lib/agents/schedule";
 import { getRepository } from "@/lib/data";
+import { getMailConfig, verifyMail } from "@/lib/mail";
 import { isDatabaseConfigured } from "@/lib/db/config";
 import { getIntegrationsOverview } from "@/lib/integrations/config";
 import { probeTidyCalConnection } from "@/lib/integrations/tidycal";
@@ -17,6 +18,8 @@ export async function GET(request: NextRequest) {
   const dbProbe = isDatabaseConfigured()
     ? await (await import("@/lib/db/mysql")).probeDatabase()
     : null;
+  const mail = getMailConfig();
+  const mailProbe = mail ? await verifyMail(mail) : null;
   const schedule = getScheduleConfig();
   const lastScheduled =
     dbProbe?.ok
@@ -44,6 +47,25 @@ export async function GET(request: NextRequest) {
         : dbProbe.ok
           ? []
           : ["Vérifier l'hôte, le nom de la base, l'utilisateur et le mot de passe dans hPanel"],
+    },
+    emails: {
+      status: !mail ? "missing" : mailProbe?.ok ? "configured" : "partial",
+      from: mail?.from ?? null,
+      redirection: mail?.redirection ?? null,
+      message: !mail
+        ? "Non configuré : les e-mails approuvés restent à envoyer à la main"
+        : mailProbe?.ok
+          ? mail.redirection
+            ? `Mode test : tous les envois partent vers ${mail.redirection}`
+            : "Connexion SMTP vérifiée : envois réels"
+          : mailProbe && !mailProbe.ok
+            ? mailProbe.message
+            : "",
+      needsFromUser: !mail
+        ? ["SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD et SMTP_FROM dans hPanel"]
+        : mailProbe?.ok
+          ? []
+          : ["Vérifier l'hôte, le port, l'utilisateur et le mot de passe SMTP"],
     },
     agentsPlanifies: {
       status:

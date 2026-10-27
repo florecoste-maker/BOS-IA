@@ -172,6 +172,7 @@ async function importRow(
     r.numero,
     {
       client: r.client,
+      email_client: r.emailClient,
       montant_ht: r.montant,
       emise_le: r.emiseLe,
       echeance: r.echeance,

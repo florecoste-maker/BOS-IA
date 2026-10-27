@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withRecipients } from "@/lib/actions/execute";
 import { AgentRunError, runAgent } from "@/lib/agents/claude";
 import { getRepository } from "@/lib/data";
 
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       run,
       agents: await repo.getAgents(),
-      actions: await repo.getAgentActions(),
+      actions: await withRecipients(repo, await repo.getAgentActions()),
     });
   } catch (error) {
     if (error instanceof AgentRunError) {

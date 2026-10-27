@@ -85,6 +85,8 @@ export interface Invoice {
   emiseLe: string;
   echeance: string;
   joursRetard: number;
+  /** Adresse du client pour les relances (facultative). */
+  emailClient?: string;
 }
 
 export type AgentTier = "QAA" | "IPOA" | "FCA" | "MDGA";
@@ -113,6 +115,26 @@ export interface AgentAction {
   timestamp: string;
   requiresHitl: boolean;
   hitlStatus?: "pending" | "approved" | "rejected";
+  /** Brouillon d'e-mail : le destinataire est résolu côté serveur, jamais fourni par le modèle. */
+  email?: EmailDraft;
+  /** Résultat de l'exécution après approbation. */
+  execution?: ActionExecution;
+}
+
+export interface EmailDraft {
+  /** « apprenant » : l'apprenant `refId` ; « facture » : le client de la facture `refId`. */
+  cible: "apprenant" | "facture";
+  refId: string;
+  objet: string;
+  corps: string;
+  /** Renseigné pour l'affichage (adresse résolue), jamais stocké. */
+  destinataire?: { nom: string; email: string | null };
+}
+
+export interface ActionExecution {
+  statut: "en_cours" | "envoye" | "echec" | "simule" | "a_faire";
+  le: string;
+  message: string;
 }
 
 export interface DashboardMetrics {

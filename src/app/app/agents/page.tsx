@@ -1,5 +1,6 @@
 import { AgentsClient } from "@/components/agents-client";
 import { SectionTitle, StatusPill } from "@/components/ui";
+import { withRecipients } from "@/lib/actions/execute";
 import { getScheduleConfig } from "@/lib/agents/schedule";
 import { getRepository } from "@/lib/data";
 import { formatDateTime } from "@/lib/format";
@@ -27,7 +28,7 @@ export default async function AgentsPage() {
         title="Écosystème multi-agents"
         description="SMA hiérarchisé : QAA (vérité & conformité), IPOA (optimisation), FCA/MDGA (délégation surveillée). Les processus à haut risque restent sous HITL."
       />
-      <AgentsClient initialAgents={agents} initialActions={actions} />
+      <AgentsClient initialAgents={agents} initialActions={await withRecipients(repo, actions)} />
 
       <section className="mt-12">
         <h2 className="font-display text-xl font-semibold">Exécutions</h2>

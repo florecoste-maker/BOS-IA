@@ -24,8 +24,8 @@ const securityHeaders = [
  */
 const nextConfig = {
   output: "standalone",
-  // Pilote MySQL chargé par Node tel quel (pas de bundling), copié dans standalone.
-  serverExternalPackages: ["mysql2"],
+  // Pilote MySQL et client SMTP chargés par Node tels quels (pas de bundling), copié dans standalone.
+  serverExternalPackages: ["mysql2", "nodemailer"],
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

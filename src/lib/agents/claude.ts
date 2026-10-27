@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { brand } from "@/lib/brand";
 import { getRepository, type Repository } from "@/lib/data";
-import type { Agent, AgentRunLog } from "@/lib/types";
+import type { Agent, AgentRunLog, EmailDraft } from "@/lib/types";
 
 export const DEFAULT_AGENTS_MODEL = "claude-opus-5-5";
 const MAX_ACTIONS = 3;
@@ -20,8 +20,16 @@ export function getAgentsConfig() {
 
 export interface AgentProposal {
   resume: string;
-  actions: Array<{ type: string; description: string; requiresHitl: boolean }>;
+  actions: Array<{
+    type: string;
+    description: string;
+    requiresHitl: boolean;
+    email?: EmailDraft | null;
+  }>;
 }
+
+const MAX_SUBJECT = 200;
+const MAX_BODY = 5000;
 
 const proposalSchema = {
   type: "object",
@@ -39,8 +47,33 @@ const proposalSchema = {
             type: "boolean",
             description: "true si l'action touche un client, de l'argent ou des données personnelles.",
           },
+          email: {
+            description:
+              "Brouillon d'e-mail si l'action consiste à écrire à un apprenant ou au client d'une facture, sinon null. N'invente jamais d'adresse : désigne seulement l'apprenant ou la facture par son id.",
+            anyOf: [
+              {
+                type: "object",
+                properties: {
+                  cible: {
+                    type: "string",
+                    enum: ["apprenant", "facture"],
+                    description: "apprenant : écrire à l'apprenant ; facture : écrire au client de la facture.",
+                  },
+                  refId: { type: "string", description: "id de l'apprenant ou de la facture (champ id des données)." },
+                  objet: { type: "string", description: "Objet de l'e-mail." },
+                  corps: {
+                    type: "string",
+                    description: `Texte complet de l'e-mail, prêt à envoyer, signé « L'équipe ${brand.agency} ».`,
+                  },
+                },
+                required: ["cible", "refId", "objet", "corps"],
+                additionalProperties: false,
+              },
+              { type: "null" },
+            ],
+          },
         },
-        required: ["type", "description", "requiresHitl"],
+        required: ["type", "description", "requiresHitl", "email"],
         additionalProperties: false,
       },
     },
@@ -66,7 +99,15 @@ export async function buildAgentContext(repo: Repository) {
       return copy;
     }),
     dossiersOpco,
-    factures,
+    // Adresse du client masquée : seul compte le fait qu'une relance soit possible.
+    factures: factures.map((invoice) => {
+      const copy: Partial<typeof invoice> & { emailClientConnu: boolean } = {
+        ...invoice,
+        emailClientConnu: Boolean(invoice.emailClient),
+      };
+      delete copy.emailClient;
+      return copy;
+    }),
     indicateurs,
   };
 }
@@ -77,23 +118,44 @@ function systemPrompt(agent: Agent) {
     `Ton rôle : ${agent.role}. Niveau d'autonomie : ${agent.autonomy} (tier ${agent.tier}).`,
     "Tu analyses les données du cockpit fournies et tu proposes des actions ; tu n'exécutes rien toi-même.",
     "Appuie-toi uniquement sur les données fournies : si une information manque, dis-le dans le résumé plutôt que de la supposer.",
+    "Pour écrire à un apprenant ou au client d'une facture, joins un brouillon d'e-mail complet (champ email) : il sera relu et envoyé par un humain. Pour une facture, seulement si emailClientConnu vaut true. Ton professionnel et courtois, vouvoiement.",
     "Réponds en français.",
   ].join("\n");
 }
 
+/** Ids réellement présents dans les données : un brouillon vers un autre id est écarté. */
+export interface KnownRefs {
+  apprenants: Set<string>;
+  factures: Set<string>;
+}
+
+function normalizeEmail(raw: AgentProposal["actions"][number]["email"], refs?: KnownRefs) {
+  if (!raw || !refs) return undefined;
+  const objet = raw.objet?.replace(/[\r\n]+/g, " ").trim().slice(0, MAX_SUBJECT);
+  const corps = raw.corps?.trim().slice(0, MAX_BODY);
+  const known = raw.cible === "apprenant" ? refs.apprenants : raw.cible === "facture" ? refs.factures : null;
+  if (!known || !known.has(raw.refId) || !objet || !corps) return undefined;
+  return { cible: raw.cible, refId: raw.refId, objet, corps };
+}
+
 /** Applique les garde-fous serveur, quelle que soit la réponse du modèle. */
-export function normalizeProposal(agent: Agent, raw: AgentProposal): AgentProposal {
+export function normalizeProposal(agent: Agent, raw: AgentProposal, refs?: KnownRefs): AgentProposal {
   const forceHitl = agent.hitlObligatoire || agent.risque === "eleve";
   return {
     resume: raw.resume.trim().slice(0, 600),
     actions: raw.actions
       .filter((a) => a.type.trim() && a.description.trim())
       .slice(0, MAX_ACTIONS)
-      .map((a) => ({
-        type: a.type.trim().slice(0, 60),
-        description: a.description.trim().slice(0, 600),
-        requiresHitl: forceHitl || a.requiresHitl,
-      })),
+      .map((a) => {
+        const email = normalizeEmail(a.email, refs);
+        return {
+          type: a.type.trim().slice(0, 60),
+          description: a.description.trim().slice(0, 600),
+          // Un e-mail part toujours après validation humaine.
+          requiresHitl: forceHitl || a.requiresHitl || Boolean(email),
+          ...(email ? { email } : {}),
+        };
+      }),
   };
 }
 
@@ -202,6 +264,10 @@ async function analyse(repo: Repository, agent: Agent) {
     throw new AgentRunError("Réponse de l'agent illisible.", 502);
   }
 
-  const proposal = normalizeProposal(agent, parsed);
+  const [learners, invoices] = await Promise.all([repo.getLearners(), repo.getInvoices()]);
+  const proposal = normalizeProposal(agent, parsed, {
+    apprenants: new Set(learners.map((l) => l.id)),
+    factures: new Set(invoices.filter((i) => i.emailClient).map((i) => i.id)),
+  });
   return repo.recordAgentRun(agent.id, proposal, response.model);
 }
