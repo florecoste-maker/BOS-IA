@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { StatusPill } from "@/components/ui";
 
 type Overview = {
@@ -41,7 +41,9 @@ type Overview = {
   emails: {
     status: "configured" | "partial" | "missing";
     from: string | null;
+    serveur: string | null;
     redirection: string | null;
+    avertissements: string[];
     message: string;
     needsFromUser: string[];
   };
@@ -70,7 +72,54 @@ function label(status: Overview["tidycal"]["status"]) {
   return "À configurer";
 }
 
-export function IntegrationsPanel() {
+function SmtpTest({ defaut }: { defaut: string }) {
+  const [adresse, setAdresse] = useState(defaut);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function send(e: React.FormEvent) {
+    e.preventDefault();
+    startTransition(async () => {
+      const res = await fetch("/api/integrations/test-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adresse }),
+      });
+      const json = await res.json().catch(() => ({}));
+      setResult(res.ok ? { ok: true, text: json.message } : { ok: false, text: json.error ?? "Échec de l'envoi" });
+    });
+  }
+
+  return (
+    <form onSubmit={send} className="mt-4 flex flex-wrap items-end gap-2 text-sm">
+      <label className="min-w-56 flex-1">
+        Envoyer un e-mail de test à
+        <input
+          required
+          type="email"
+          value={adresse}
+          onChange={(e) => setAdresse(e.target.value)}
+          placeholder="vous@jamaliance.com"
+          className="mt-1 block w-full border border-line bg-surface px-2 py-1.5"
+        />
+      </label>
+      <button
+        type="submit"
+        disabled={pending}
+        className="border border-line px-3 py-1.5 text-xs font-semibold hover:border-brand/40 disabled:opacity-50"
+      >
+        {pending ? "Envoi…" : "Envoyer le test"}
+      </button>
+      {result ? (
+        <p className={`w-full border-l-2 bg-surface px-3 py-2 ${result.ok ? "border-nexus" : "border-danger"}`}>
+          {result.text}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+export function IntegrationsPanel({ isAdmin = false }: { isAdmin?: boolean }) {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -237,6 +286,7 @@ export function IntegrationsPanel() {
         </div>
         <ul className="mt-3 space-y-1 text-sm text-ink-muted">
           {data.emails.from ? <li>Expéditeur : {data.emails.from}</li> : null}
+          {data.emails.serveur ? <li>Serveur : {data.emails.serveur}</li> : null}
           {data.emails.message ? <li>{data.emails.message}</li> : null}
           <li>Envoi uniquement après « Approuver et envoyer » dans la file HITL</li>
         </ul>
@@ -247,6 +297,14 @@ export function IntegrationsPanel() {
             ))}
           </ul>
         ) : null}
+        {data.emails.avertissements.length > 0 ? (
+          <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-danger">
+            {data.emails.avertissements.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : null}
+        {isAdmin && data.emails.status !== "missing" ? <SmtpTest defaut={data.alertes.adresse ?? ""} /> : null}
       </article>
 
       <article className="border-l-2 border-danger/40 pl-4">

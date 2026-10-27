@@ -14,8 +14,14 @@ const PUBLIC_API = [
   "/api/sauvegarde",
 ];
 
-/** Réservé aux administrateurs : comptes et journal. */
-const ADMIN_PATHS = ["/app/utilisateurs", "/app/journal", "/api/utilisateurs", "/api/journal"];
+/** Réservé aux administrateurs : comptes, journal, e-mail de test. */
+const ADMIN_PATHS = [
+  "/app/utilisateurs",
+  "/app/journal",
+  "/api/utilisateurs",
+  "/api/journal",
+  "/api/integrations/test-email",
+];
 
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
