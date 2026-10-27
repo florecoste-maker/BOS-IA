@@ -133,9 +133,14 @@ Pour les données réelles (MySQL ou MariaDB Hostinger) :
    6 agents enregistrés. **Aucune donnée fictive** n'est insérée.
 4. Vérifier `/app/integrations` → carte « Base de données » : « MySQL connecté ».
 
-Les indicateurs sont calculés à partir des données. Le délai de paiement et le MRR
-affichent « — » : les données ne contiennent ni date de paiement ni abonnement.
-Les jours de retard des factures sont calculés à partir de l'échéance.
+Les indicateurs sont tous calculés à partir des données :
+- **délai de paiement moyen** : jours entre émission et paiement, sur les factures
+  payées des 12 derniers mois (colonne `payee_le` à l'import, ou bouton « Marquer
+  payée » dans `/app/finance`) ; « — » tant qu'aucune facture payée n'est datée ;
+- **MRR** : montant HT ramené au mois des factures d'abonnement (`recurrence` :
+  mensuel, trimestriel, annuel) dont la période couvre aujourd'hui — une annuelle
+  de 1 200 € compte 100 € pendant 12 mois ; brouillons exclus ; « — » sans abonnement ;
+- jours de retard : depuis l'échéance, 0 pour une facture payée.
 
 ## Import CSV / Excel
 

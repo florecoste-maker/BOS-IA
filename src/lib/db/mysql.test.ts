@@ -312,4 +312,49 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
       await sink.close();
     }
   });
+
+  it("importe dates de paiement et abonnements, puis calcule délai et MRR", async () => {
+    await conn.query("ALTER TABLE bos_invoices DROP COLUMN payee_le, DROP COLUMN recurrence");
+    const state = (globalThis as { __bosDb?: { pool: { end(): Promise<void> } } }).__bosDb;
+    await state?.pool.end();
+    (globalThis as { __bosDb?: unknown }).__bosDb = undefined;
+
+    const { importIntoDatabase } = await import("./import");
+    const { parseImport } = await import("@/lib/import/schema");
+    const today = new Date();
+    const iso = (daysAgo: number) => new Date(today.getTime() - daysAgo * 86_400_000).toISOString().slice(0, 10);
+    const parsed = parseImport("factures", [
+      ["numero", "client", "montant_ht", "emise_le", "echeance", "payee_le", "recurrence"],
+      ["PAY-1", "A", "1000", iso(40), iso(10), iso(20), ""],
+      ["PAY-2", "B", "500", iso(30), iso(0), iso(20), ""],
+      ["ABO-1", "C", "120", iso(5), iso(-25), "", "Mensuel"],
+      ["ABO-2", "D", "1 200", iso(60), iso(30), "", "annuel"],
+    ]);
+    assert.deepEqual(parsed.errors, []);
+    const report = await importIntoDatabase("factures", parsed.rows, { dryRun: false });
+    assert.equal(report.created, 4);
+
+    const invoices = await repo.getInvoices();
+    const pay1 = invoices.find((i) => i.numero === "PAY-1")!;
+    assert.equal(pay1.status, "payee", "date de paiement sans statut = payée");
+    assert.equal(pay1.payeeLe, iso(20));
+    assert.equal(pay1.joursRetard, 0);
+    assert.equal(invoices.find((i) => i.numero === "ABO-1")!.recurrence, "mensuel");
+
+    // Délai : FA-IMP-1 et inv-old n'ont pas de date de paiement ; PAY-1 20 j, PAY-2 10 j.
+    let metrics = await repo.getMetrics();
+    assert.equal(metrics.delaiPaiementMoyen, 15);
+    assert.equal(metrics.delaiPaiementBase, 2);
+    assert.equal(metrics.mrr, 120 + 100);
+    assert.equal(metrics.abonnementsActifs, 2);
+
+    const old = invoices.find((i) => i.numero === "FA-2020-0001")!;
+    assert.ok(old.joursRetard > 0);
+    const paid = await repo.markInvoicePaid(old.id, iso(0));
+    assert.equal(paid?.status, "payee");
+    assert.equal(paid?.joursRetard, 0);
+    assert.equal(await repo.markInvoicePaid("inconnue", iso(0)), null);
+    metrics = await repo.getMetrics();
+    assert.equal(metrics.delaiPaiementBase, 3, "payée aujourd'hui : comptée dans les 12 mois");
+  });
 });

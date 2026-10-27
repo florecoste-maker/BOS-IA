@@ -4,13 +4,29 @@
  * l'encodage et le séparateur sont détectés automatiquement.
  */
 
+/**
+ * Octets 0x80–0x9F de Windows-1252 (€, ’, œ, «…»). Node décode ce label comme du
+ * Latin-1 et rend ces octets en caractères de contrôle : on applique la table.
+ * Les positions vides (0x81, 0x8D, 0x8F, 0x90, 0x9D) restent inchangées.
+ */
+const CP1252_HIGH =
+  "€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008DŽ\u008F\u0090‘’“”•–—˜™š›œ\u009DžŸ";
+
+function decodeWindows1252(bytes: Uint8Array) {
+  let out = "";
+  for (const byte of bytes) {
+    out += byte >= 0x80 && byte <= 0x9f ? CP1252_HIGH[byte - 0x80] : String.fromCharCode(byte);
+  }
+  return out;
+}
+
 /** UTF-8 (avec ou sans BOM), sinon Windows-1252. */
 export function decodeText(bytes: Uint8Array): string {
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
-    text = new TextDecoder("windows-1252").decode(bytes);
+    text = decodeWindows1252(bytes);
   }
   return text.replace(/^﻿/, "");
 }

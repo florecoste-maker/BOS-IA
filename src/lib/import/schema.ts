@@ -47,6 +47,7 @@ const PIPELINE_STAGE = [
 ] as const;
 const SESSION_STATUS = ["planifiee", "en_cours", "terminee"] as const;
 const OPCO_STATUS = ["brouillon", "completude", "transmis", "accepte", "refuse", "paye"] as const;
+const RECURRENCE = ["mensuel", "trimestriel", "annuel"] as const;
 const INVOICE_STATUS = [
   "brouillon",
   "emise",
@@ -100,6 +101,8 @@ export const FIELDS: Record<ImportKind, Field[]> = {
     { key: "echeance", header: "echeance", aliases: ["date_echeance"], type: "date", required: true, example: "05/11/2026" },
     { key: "statut", header: "statut", type: { enum: INVOICE_STATUS }, example: "Émise", help: "Brouillon, Émise, Acompte payé, Solde dû, Payée, Relance, Impayée (défaut : Émise)" },
     { key: "acompte", header: "acompte_pct", aliases: ["acompte"], type: "percent", example: "30", help: "0 à 100" },
+    { key: "payeeLe", header: "payee_le", aliases: ["date_paiement", "paye_le", "date_de_paiement", "reglee_le"], type: "date", example: "", help: "Date de paiement : sert au délai de paiement moyen" },
+    { key: "recurrence", header: "recurrence", aliases: ["abonnement", "periodicite"], type: { enum: RECURRENCE }, example: "", help: "Abonnement : mensuel, trimestriel ou annuel (sert au MRR) ; vide sinon" },
     { key: "dossier", header: "dossier_reference", aliases: ["dossier_opco", "reference_dossier"], type: "text", example: "OPCO-2026-0842", help: "Référence d'un dossier OPCO existant" },
   ],
 };

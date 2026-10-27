@@ -196,6 +196,7 @@ const invoices: Invoice[] = [
     emiseLe: daysAgo(20).slice(0, 10),
     echeance: daysAgo(5).slice(0, 10),
     joursRetard: 0,
+    payeeLe: daysAgo(4).slice(0, 10),
   },
   {
     id: "inv-002",
@@ -231,6 +232,7 @@ const invoices: Invoice[] = [
     emiseLe: daysAgo(2).slice(0, 10),
     echeance: daysFromNow(28),
     joursRetard: 0,
+    recurrence: "mensuel",
   },
 ];
 
@@ -335,11 +337,7 @@ const agentActions: AgentAction[] = [
 ];
 
 function computeMetrics(): DashboardMetrics {
-  // Délai et MRR : valeurs fixes de démonstration.
-  return computeMetricsFrom(
-    { learners, opcoDossiers, invoices, agents, agentActions },
-    { delaiPaiementMoyen: 22, mrr: 450 },
-  );
+  return computeMetricsFrom({ learners, opcoDossiers, invoices, agents, agentActions });
 }
 
 /** System of Record in-memory (démo). Isolé par tenant conceptuel. */
@@ -373,6 +371,16 @@ export const store = {
     learner.pipelineStage = score >= 70 ? "certification" : "evaluation";
     learner.derniereActivite = new Date().toISOString();
     return { ...learner };
+  },
+
+  /** Paiement reçu : statut « payée » et date de paiement (AAAA-MM-JJ). */
+  markInvoicePaid(id: string, payeeLe: string) {
+    const invoice = invoices.find((i) => i.id === id);
+    if (!invoice) return null;
+    invoice.status = "payee";
+    invoice.payeeLe = payeeLe;
+    invoice.joursRetard = 0;
+    return { ...invoice };
   },
 
   completeOpcoDossier(id: string) {

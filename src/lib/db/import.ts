@@ -176,8 +176,11 @@ async function importRow(
       montant_ht: r.montant,
       emise_le: r.emiseLe,
       echeance: r.echeance,
-      status: r.statut,
+      // Une date de paiement sans statut vaut « payée ».
+      status: r.statut ?? (r.payeeLe ? "payee" : null),
       acompte_pct: r.acompte,
+      payee_le: r.payeeLe,
+      recurrence: r.recurrence,
       dossier_opco_id: dossierId,
     },
     { status: "emise", acompte_pct: 0 },

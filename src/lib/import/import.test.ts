@@ -24,6 +24,14 @@ describe("Lecture CSV", () => {
     assert.equal(rows[2][3], "Océan Services");
   });
 
+  it("décode les caractères spéciaux de Windows-1252 (€, ’, «, œ, …)", () => {
+    // Octets produits par Excel en français (Python : texte.encode("cp1252")).
+    const bytes = new Uint8Array([77, 111, 110, 116, 97, 110, 116, 59, 78, 111, 116, 101, 13, 10, 49, 32, 52, 57, 48, 44, 48, 48, 32, 128, 59, 108, 146, 233, 113, 117, 105, 112, 101, 32, 150, 32, 171, 32, 156, 117, 118, 114, 101, 32, 187, 32, 133, 13, 10]);
+    const rows = parseCsv(decodeText(bytes));
+    assert.deepEqual(rows[1], ["1 490,00 €", "l’équipe – « œuvre » …"]);
+    assert.equal(parseDecimal(rows[1][0]), 1490);
+  });
+
   it("retire le BOM UTF-8 et détecte la virgule", () => {
     const text = decodeText(new TextEncoder().encode('﻿a,b\n"x ""y""",2\n'));
     assert.equal(detectDelimiter(text), ",");
@@ -120,6 +128,18 @@ describe("Validation d'un import", () => {
     assert.match(errors[0].message, /Envolée.*inconnue/);
     assert.equal(errors[1].line, 4);
     assert.match(errors[1].message, /déjà ligne 2/);
+  });
+
+  it("lit la date de paiement et la récurrence des factures", () => {
+    const { rows, errors } = parseImport("factures", [
+      ["N° facture", "Client", "Total HT", "Date facture", "Échéance", "Date de paiement", "Abonnement"],
+      ["FA-9", "Atelier", "1490", "01/10/2026", "31/10/2026", "15/10/2026", "Trimestriel"],
+      ["FA-10", "Atelier", "10", "01/10/2026", "31/10/2026", "", "hebdo"],
+    ]);
+    assert.equal(rows[0].record.payeeLe, "2026-10-15");
+    assert.equal(rows[0].record.recurrence, "trimestriel");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0].message, /hebdo.*inconnue/);
   });
 
   it("refuse un fichier sans les colonnes obligatoires", () => {

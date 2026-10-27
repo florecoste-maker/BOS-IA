@@ -31,6 +31,30 @@ export function FinanceClient({
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  // Date locale du navigateur (AAAA-MM-JJ), pas UTC.
+  const today = new Date().toLocaleDateString("sv-SE");
+  const [paidDates, setPaidDates] = useState<Record<string, string>>({});
+
+  function markPaid(invoice: Invoice) {
+    const payeeLe = paidDates[invoice.id] ?? today;
+    startTransition(async () => {
+      const res = await fetch("/api/finance", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId: invoice.id, action: "payee", payeeLe }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error ?? "Erreur");
+        return;
+      }
+      setMessage(`Facture ${invoice.numero} payée le ${formatDate(payeeLe)}`);
+      const refreshed = await fetch("/api/finance").then((r) => r.json());
+      setDossiers(refreshed.dossiers);
+      setInvoices(refreshed.invoices);
+    });
+  }
+
   function completeDossier(id: string) {
     startTransition(async () => {
       const res = await fetch("/api/finance", {
@@ -130,7 +154,33 @@ export function FinanceClient({
                   {invoice.joursRetard > 0
                     ? ` · Retard ${invoice.joursRetard} j`
                     : ""}
+                  {invoice.payeeLe ? ` · Payée le ${formatDate(invoice.payeeLe)}` : ""}
+                  {invoice.recurrence ? ` · Abonnement ${invoice.recurrence}` : ""}
                 </p>
+                {invoice.payeeLe || invoice.status === "brouillon" ? null : (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                    <label className="flex items-center gap-1 text-ink-muted">
+                      Payée le
+                      <input
+                        type="date"
+                        value={paidDates[invoice.id] ?? today}
+                        max={today}
+                        min={invoice.emiseLe}
+                        disabled={pending}
+                        onChange={(e) => setPaidDates({ ...paidDates, [invoice.id]: e.target.value })}
+                        className="border border-line bg-surface px-1 py-0.5"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => markPaid(invoice)}
+                      className="bg-brand px-3 py-1.5 font-semibold text-white hover:bg-brand-deep disabled:opacity-50"
+                    >
+                      Marquer payée
+                    </button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
