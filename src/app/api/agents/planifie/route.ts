@@ -12,7 +12,8 @@ import { getRepository } from "@/lib/data";
 import { isDatabaseConfigured } from "@/lib/db/config";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 900;
+// Plafond Vercel : 300 s (Hobby), 800 s (Pro) ; 300 reste valide partout.
+export const maxDuration = 300;
 
 /**
  * Déclencheur des agents planifiés, appelé par un planificateur externe :
