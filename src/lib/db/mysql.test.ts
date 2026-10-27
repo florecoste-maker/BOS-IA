@@ -133,4 +133,76 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
     assert.equal((await repo.getLearners()).length, 1);
     assert.equal((await repo.getAgentActions()).length, 2);
   });
+
+  it("importe sessions, apprenants, dossiers et factures (vérifier puis importer)", async () => {
+    const { importIntoDatabase } = await import("./import");
+    const { parseImport } = await import("@/lib/import/schema");
+    const parse = (kind: Parameters<typeof parseImport>[0], table: string[][]) => {
+      const parsed = parseImport(kind, table);
+      assert.deepEqual(parsed.errors, []);
+      return parsed.rows;
+    };
+
+    const sessions = parse("sessions", [
+      ["code", "titre", "debut", "fin", "formateur", "places", "statut"],
+      ["IMP-1", "Import test", "03/11/2026", "04/11/2026", "B. Test", "8", "Planifiée"],
+      ["ses-1-maj", "Mise à jour", "01/10/2026", "08/10/2026", "C. Test", "9", ""],
+    ]);
+    const check = await importIntoDatabase("sessions", sessions, { dryRun: true });
+    assert.deepEqual(check, { created: 2, updated: 0, errors: [], committed: false });
+    assert.equal((await repo.getSessions()).length, 1, "la vérification n'écrit rien");
+
+    const done = await importIntoDatabase("sessions", sessions, { dryRun: false });
+    assert.equal(done.committed, true);
+    assert.equal((await repo.getSessions()).length, 3);
+
+    // Mise à jour par clé : cellule vide = valeur conservée.
+    const update = parse("sessions", [
+      ["code", "titre", "debut", "fin", "formateur", "places", "statut"],
+      ["IMP-1", "Import test v2", "03/11/2026", "04/11/2026", "B. Test", "8", ""],
+    ]);
+    assert.deepEqual(
+      await importIntoDatabase("sessions", update, { dryRun: false }),
+      { created: 0, updated: 1, errors: [], committed: true },
+    );
+    const imp = (await repo.getSessions()).find((s) => s.code === "IMP-1")!;
+    assert.equal(imp.titre, "Import test v2");
+    assert.equal(imp.statut, "planifiee");
+
+    // Une référence introuvable annule tout le fichier.
+    const learners = parse("apprenants", [
+      ["email", "nom", "prenom", "session_code"],
+      ["nouvelle@exemple.fr", "Nouvelle", "Lina", "IMP-1"],
+      ["perdu@exemple.fr", "Perdu", "Max", "INCONNUE"],
+    ]);
+    const refused = await importIntoDatabase("apprenants", learners, { dryRun: false });
+    assert.equal(refused.committed, false);
+    assert.deepEqual(refused.errors, [{ line: 3, message: "session « INCONNUE » introuvable" }]);
+    assert.equal((await repo.getLearners()).length, 1);
+
+    const ok = await importIntoDatabase("apprenants", learners.slice(0, 1), { dryRun: false });
+    assert.equal(ok.created, 1);
+    const lina = (await repo.getLearners()).find((l) => l.email === "nouvelle@exemple.fr")!;
+    assert.equal(lina.status, "inscrit");
+    assert.ok(lina.sessionId);
+
+    const dossiers = parse("dossiers", [
+      ["reference", "organisme", "apprenant_email", "session_code", "montant", "pieces_manquantes"],
+      ["OPCO-IMP", "AKTO", "Nouvelle@Exemple.fr", "IMP-1", "1 490,50", "Attestation, signée|Programme"],
+    ]);
+    assert.equal((await importIntoDatabase("dossiers", dossiers, { dryRun: false })).created, 1);
+    const d = (await repo.getOpcoDossiers()).find((x) => x.reference === "OPCO-IMP")!;
+    assert.equal(d.montant, 1490.5);
+    assert.deepEqual(d.piecesManquantes, ["Attestation, signée", "Programme"]);
+
+    const factures = parse("factures", [
+      ["numero", "client", "montant_ht", "emise_le", "echeance", "dossier_reference"],
+      ["FA-IMP-1", "Client", "1490,50", "01/01/2026", "31/01/2026", "OPCO-IMP"],
+    ]);
+    assert.equal((await importIntoDatabase("factures", factures, { dryRun: false })).created, 1);
+    const f = (await repo.getInvoices()).find((x) => x.numero === "FA-IMP-1")!;
+    assert.equal(f.status, "emise");
+    assert.equal(f.dossierOpcoId, d.id);
+    assert.ok(f.joursRetard > 0);
+  });
 });

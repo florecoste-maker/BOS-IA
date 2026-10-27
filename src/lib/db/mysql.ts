@@ -162,7 +162,7 @@ async function db(): Promise<Pool> {
   return state.pool;
 }
 
-async function transaction<T>(work: (conn: PoolConnection) => Promise<T>): Promise<T> {
+export async function transaction<T>(work: (conn: PoolConnection) => Promise<T>): Promise<T> {
   const conn = await (await db()).getConnection();
   try {
     await conn.beginTransaction();

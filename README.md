@@ -21,6 +21,7 @@
 | Accès protégé par mot de passe (`/login`, `/app/*`, `/api/*`) | ✅ Prêt (fermé tant que non configuré) |
 | Agents IA connectés à l'API Claude (`POST /api/agents/run`) | ✅ Prêt (clé `ANTHROPIC_API_KEY` requise) |
 | Base de données MySQL / MariaDB (données persistantes) | ✅ Prêt (variables `DB_*` requises, sinon mode démo) |
+| Import CSV / Excel (`/app/import`) | ✅ Prêt (nécessite la base) |
 | CI GitHub (lint, tests, build, test MySQL 8) | ✅ Prêt |
 | Config Hostinger `standalone` + `.env.example` | ✅ Prêt |
 | Déploiement sur `app.jamaliance.com` | ✅ En ligne |
@@ -60,6 +61,7 @@ npm run lint
 | `/app/formation` | Pipeline formation |
 | `/app/finance` | Dossiers OPCO & factures |
 | `/app/agents` | Supervision multi-agents + HITL |
+| `/app/import` | Import CSV / Excel des données |
 | `/app/integrations` | État Hostinger / TidyCal (+ aperçu calendrier) |
 
 ## Déploiement Hostinger (app.jamaliance.com)
@@ -132,6 +134,23 @@ Pour les données réelles (MySQL ou MariaDB Hostinger) :
 Les indicateurs sont calculés à partir des données. Le délai de paiement et le MRR
 affichent « — » : les données ne contiennent ni date de paiement ni abonnement.
 Les jours de retard des factures sont calculés à partir de l'échéance.
+
+## Import CSV / Excel
+
+`/app/import` charge les sessions, apprenants, dossiers OPCO et factures depuis un
+fichier `.xlsx` (première feuille) ou CSV (séparateur `;`, `,` ou tabulation ;
+UTF-8 ou Windows-1252, comme les CSV d'Excel en français). Un modèle par type est
+téléchargeable sur la page.
+
+- Ordre : sessions → apprenants → dossiers OPCO → factures (références par code de
+  session, e-mail d'apprenant, référence de dossier).
+- **Vérifier** affiche toutes les erreurs ligne par ligne sans rien écrire ;
+  **Importer** écrit tout ou rien, dans une transaction.
+- Une ligne existante (même code, e-mail, référence ou numéro) est mise à jour ;
+  une cellule vide conserve la valeur enregistrée.
+- Valeurs françaises acceptées : `27/10/2026`, `1 490,50 €`, `oui` / `non`,
+  statuts en toutes lettres (« En formation », « Payée »…).
+- Limites : 2 Mo et 5 000 lignes par fichier ; l'ancien format `.xls` est refusé.
 
 Test d'intégration local : `BOS_TEST_DATABASE_URL=mysql://… npm test`
 (**supprime les tables `bos_*` de la base indiquée** ; utiliser une base de test).
