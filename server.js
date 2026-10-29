@@ -9,6 +9,13 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- fichier CommonJS exécuté directement par Node */
 const { existsSync } = require("node:fs");
 const path = require("node:path");
+const { loadEnvConfig } = require("@next/env");
+
+// Le serveur autonome se place dans `.next/standalone` et n'y cherche que ses
+// propres `.env` : ceux de la racine (où hPanel écrit les variables) seraient
+// ignorés et le cockpit resterait fermé. On les charge ici, sans écraser les
+// variables déjà présentes dans l'environnement du processus.
+loadEnvConfig(__dirname);
 
 const standaloneServer = path.join(__dirname, ".next", "standalone", "server.js");
 
