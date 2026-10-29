@@ -45,6 +45,10 @@ jobs:
           fi
           echo "::notice::$BOS_APP_URL répond : BOS-IA en ligne."
 
+      - name: Chargement des variables (noms seulement)
+        if: always()
+        run: curl -sS --max-time 30 "$BOS_APP_URL/api/health?diagnostic=1" || true
+
       - name: Bilan complet ou sauvegarde
         run: |
           if [ -z "$BOS_CRON_SECRET" ]; then

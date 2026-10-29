@@ -45,6 +45,16 @@ for (const [key, value] of Object.entries(process.env)) {
 }
 
 writeFileSync(`${standalone}/.env.production.local`, `${lines.join("\n")}\n`, { mode: 0o600 });
+// Trace du build pour /api/health?diagnostic=1 : noms et comptes, aucune valeur.
+writeFileSync(
+  `${standalone}/build-env.json`,
+  JSON.stringify({
+    date: new Date().toISOString(),
+    nb_variables: Object.keys(process.env).length,
+    reprises: lines.map((l) => l.split("=")[0]),
+    proches: Object.keys(process.env).filter((k) => /bos|admin_?pass|session_?secret|cron_?secret/i.test(k)).sort(),
+  }),
+);
 console.log(
   `Variables reprises pour le démarrage : ${lines.map((l) => l.split("=")[0]).join(", ") || "aucune"}.`,
 );
