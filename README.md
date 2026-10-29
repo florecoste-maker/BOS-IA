@@ -99,7 +99,17 @@ npm run lint
    production (`NODE_ENV=production`).
 
 3. Domaine / sous-domaine : **app.jamaliance.com** (laisser jamaliance.com sur Horizons)
-4. Variables d'environnement **obligatoires** pour ouvrir le cockpit :
+4. **Variables : fichier `~/bos-ia.env`.** Hostinger lance l'application par
+   LiteSpeed (`lsnode.js`) depuis un dossier recréé à chaque déploiement
+   (`domains/app.jamaliance.com/hbuilds/versions/<id>/nodejs`) et le processus
+   ne reçoit pas les variables saisies dans hPanel. Créer avec le gestionnaire
+   de fichiers, à la racine du compte (`~`, hors de tout dossier public), un
+   fichier `bos-ia.env` au format `NOM=valeur` (une variable par ligne, sans
+   guillemets). Il est cherché dans le dossier de l'application puis dans chacun
+   de ses parents, survit aux déploiements et se lit au démarrage : après
+   modification, redémarrer l'application. `/api/health?diagnostic=1` indique
+   s'il a été chargé et quelles variables le processus voit (noms seulement).
+   Variables d'environnement **obligatoires** pour ouvrir le cockpit :
    `BOS_ADMIN_PASSWORD` (12 caractères minimum) et `BOS_SESSION_SECRET`
    (32 caractères minimum, `openssl rand -hex 32`). Sans elles, `/app` et `/api`
    restent fermés (page de connexion avec un message de configuration).

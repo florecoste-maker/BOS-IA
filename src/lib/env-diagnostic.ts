@@ -4,6 +4,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { loadedEnvFiles } from "@/lib/env-files";
 
 /** Noms proches des réglages attendus (casse, espaces, préfixes) pour repérer une faute de frappe. */
 const RELEVANT = /bos|admin_?pass|session_?secret|cron_?secret|^\s*(db|smtp|tidycal|anthropic)_|database_?url/i;
@@ -38,7 +39,8 @@ function envFileKeys(file: string) {
 export function getEnvDiagnostic() {
   const cwd = process.cwd();
   const root = path.basename(cwd) === "standalone" ? path.resolve(cwd, "../..") : cwd;
-  const standalone = path.join(root, ".next", "standalone");
+  // Hostinger (LiteSpeed lsnode) exécute directement le contenu du standalone, copié ailleurs.
+  const standalone = existsSync(path.join(cwd, "build-env.json")) ? cwd : path.join(root, ".next", "standalone");
 
   const variables = Object.keys(process.env)
     .filter((k) => RELEVANT.test(k))
@@ -58,11 +60,13 @@ export function getEnvDiagnostic() {
       repertoire: anonymize(cwd),
       node: process.version,
       demarre_il_y_a_s: Math.round(process.uptime()),
+      fichier_demarrage: process.env.LSNODE_STARTUP_FILE ? anonymize(process.env.LSNODE_STARTUP_FILE) : null,
       nb_variables: Object.keys(process.env).length,
       lancement: Object.keys(process.env).filter((k) => RUNTIME_HINTS.test(k)).sort(),
     },
     variables,
     fichiers_env: {
+      bos_ia_env_charges: loadedEnvFiles().map(anonymize),
       racine: envFiles(root),
       standalone: envFiles(standalone),
       noms_dans_env_standalone: existsSync(path.join(standalone, ".env.production.local"))
