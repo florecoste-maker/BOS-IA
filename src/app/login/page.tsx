@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { brand } from "@/lib/brand";
-import { safeNextPath } from "@/lib/auth";
+import { getAuthConfig, safeNextPath } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: `Connexion — ${brand.product}`,
@@ -19,6 +19,8 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const params = await searchParams;
   const erreur = typeof params.erreur === "string" ? params.erreur : null;
   const next = safeNextPath(typeof params.next === "string" ? params.next : null);
+  // Noms des réglages en cause (jamais leurs valeurs) : manquant ou trop court.
+  const problems = erreur === "config" ? getAuthConfig().problems : [];
 
   return (
     <main className="mx-auto flex min-h-[100svh] w-full max-w-sm flex-col justify-center px-4 py-16">
@@ -32,6 +34,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
       {erreur && messages[erreur] ? (
         <p className="mt-6 border-l-2 border-danger bg-surface px-3 py-2 text-sm">
           {messages[erreur]}
+          {problems.length ? (
+            <span className="mt-1 block text-xs text-ink-muted">
+              Vu par le serveur : {problems.join(" ; ")}.
+            </span>
+          ) : null}
         </p>
       ) : null}
 
