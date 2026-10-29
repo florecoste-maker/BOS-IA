@@ -18,6 +18,9 @@ on:
       tache:
         description: "sante ou sauvegarde"
         default: sante
+      url:
+        description: "Adresse à vérifier (défaut : BOS_APP_URL)"
+        required: false
 
 permissions: {}
 
@@ -27,9 +30,16 @@ jobs:
     timeout-minutes: 5
     env:
       BOS_CRON_SECRET: ${{ secrets.BOS_CRON_SECRET }}
-      BOS_APP_URL: ${{ vars.BOS_APP_URL || 'https://app.jamaliance.com' }}
+      BOS_APP_URL: ${{ inputs.url || vars.BOS_APP_URL || 'https://app.jamaliance.com' }}
       TACHE: ${{ github.event.schedule == '37 2 * * 0' && 'sauvegarde' || inputs.tache || 'sante' }}
     steps:
+      - name: Hébergeur qui sert l'adresse (DNS et en-têtes)
+        if: always()
+        run: |
+          host=$(echo "$BOS_APP_URL" | sed -E 's#^https?://##; s#/.*$##')
+          echo "DNS $host :"; dig +short "$host" A; dig +short "$host" CNAME
+          curl -sS -o /dev/null -D - --max-time 30 "$BOS_APP_URL/api/health" | grep -iE '^(HTTP|server|x-vercel|platform|x-powered|x-litespeed)' || true
+
       - name: Le site répond (sonde publique)
         run: |
           status=$(curl -sS -o publique.json -w "%{http_code}" --max-time 30 \
