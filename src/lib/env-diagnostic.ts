@@ -4,7 +4,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { loadedEnvFiles } from "@/lib/env-files";
+import { describeEnvFiles, loadedEnvFiles } from "@/lib/env-files";
 
 /** Noms proches des réglages attendus (casse, espaces, préfixes) pour repérer une faute de frappe. */
 const RELEVANT = /bos|admin_?pass|session_?secret|cron_?secret|^\s*(db|smtp|tidycal|anthropic)_|database_?url/i;
@@ -67,6 +67,7 @@ export function getEnvDiagnostic() {
     variables,
     fichiers_env: {
       bos_ia_env_charges: loadedEnvFiles().map(anonymize),
+      bos_ia_env_trouves: describeEnvFiles(anonymize),
       racine: envFiles(root),
       standalone: envFiles(standalone),
       noms_dans_env_standalone: existsSync(path.join(standalone, ".env.production.local"))

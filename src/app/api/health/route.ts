@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/agents/schedule";
 import { getAuthConfig } from "@/lib/auth";
 import { getEnvDiagnostic } from "@/lib/env-diagnostic";
+import { retryPersistentEnv } from "@/lib/env-files";
 import { runHealthChecks } from "@/lib/health";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
+  if (!getAuthConfig().configured) retryPersistentEnv();
   if (params.get("diagnostic") === "1") {
     // Noms et indicateurs uniquement : jamais la valeur d'une variable.
     return NextResponse.json({ service: "bos-ia", acces: getAuthConfig().configured, ...getEnvDiagnostic() });

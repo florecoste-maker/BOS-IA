@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, getAuthConfig, verifySessionToken } from "@/lib/auth";
+import { retryPersistentEnv } from "@/lib/env-files";
 import { resolveActor } from "@/lib/session";
 
 /**
@@ -28,7 +29,12 @@ export async function proxy(request: NextRequest) {
   if (PUBLIC_API.includes(pathname)) return NextResponse.next();
 
   const isApi = pathname.startsWith("/api/");
-  const auth = getAuthConfig();
+  let auth = getAuthConfig();
+  if (!auth.configured) {
+    // bos-ia.env créé ou corrigé après le démarrage : pris en compte sans redémarrer.
+    retryPersistentEnv();
+    auth = getAuthConfig();
+  }
 
   // Fermé par défaut : sans mot de passe configuré, le cockpit reste inaccessible.
   if (!auth.configured) {
