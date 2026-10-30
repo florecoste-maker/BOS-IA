@@ -1,6 +1,6 @@
 name: Surveillance
 
-# Bilan de santé quotidien et sauvegarde hebdomadaire de app.jamaliance.com.
+# Bilan de santé quotidien et sauvegarde hebdomadaire de bos.jamaliance.com.
 # Prérequis : secret de dépôt BOS_CRON_SECRET (même valeur que dans hPanel).
 # Un bilan en erreur (base injoignable, SMTP refusé…) fait échouer ce workflow :
 # GitHub prévient alors le propriétaire du dépôt par e-mail, même si le site ne
@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 5
     env:
       BOS_CRON_SECRET: ${{ secrets.BOS_CRON_SECRET }}
-      BOS_APP_URL: ${{ inputs.url || vars.BOS_APP_URL || 'https://app.jamaliance.com' }}
+      BOS_APP_URL: ${{ inputs.url || vars.BOS_APP_URL || 'https://bos.jamaliance.com' }}
       TACHE: ${{ github.event.schedule == '37 2 * * 0' && 'sauvegarde' || inputs.tache || 'sante' }}
     steps:
       - name: Hébergeur qui sert l'adresse (DNS et en-têtes)

@@ -1,8 +1,8 @@
 name: Agents planifiés
 
-# Déclenche l'analyse quotidienne des agents BOS-IA sur app.jamaliance.com.
+# Déclenche l'analyse quotidienne des agents BOS-IA sur bos.jamaliance.com.
 # Prérequis : secret de dépôt BOS_CRON_SECRET (même valeur que dans hPanel).
-# Optionnel : variable de dépôt BOS_APP_URL (défaut https://app.jamaliance.com).
+# Optionnel : variable de dépôt BOS_APP_URL (défaut https://bos.jamaliance.com).
 # Sans secret, le workflow ne fait rien. Le serveur évite les doublons (verrou,
 # intervalle minimal par agent) : l'activer dans les deux dépôts est sans risque.
 
@@ -22,7 +22,7 @@ jobs:
       - name: Lancer les agents planifiés
         env:
           BOS_CRON_SECRET: ${{ secrets.BOS_CRON_SECRET }}
-          BOS_APP_URL: ${{ vars.BOS_APP_URL || 'https://app.jamaliance.com' }}
+          BOS_APP_URL: ${{ vars.BOS_APP_URL || 'https://bos.jamaliance.com' }}
         run: |
           if [ -z "$BOS_CRON_SECRET" ]; then
             echo "::notice::Secret BOS_CRON_SECRET absent : agents planifiés non déclenchés."

@@ -2,7 +2,7 @@
  * Accès au cockpit BOS-IA : un mot de passe administrateur, une session
  * signée (HMAC-SHA256) dans un cookie httpOnly. Aucun secret côté client.
  */
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, scryptSync, timingSafeEqual } from "node:crypto";
 
 export const SESSION_COOKIE = "bos_session";
 export const SESSION_TTL_SECONDS = 12 * 60 * 60;
@@ -16,15 +16,35 @@ function trimOrNull(value: string | undefined): string | null {
   return v ? v : null;
 }
 
+let derived: { password: string; secret: string } | null = null;
+
+/**
+ * Secret de session dérivé du mot de passe (scrypt, lent à essayer hors ligne)
+ * quand BOS_SESSION_SECRET n'existe pas : sur Vercel, sans disque persistant,
+ * une seule variable suffit. Changer le mot de passe invalide les sessions.
+ */
+function derivedSessionSecret(password: string) {
+  if (derived?.password !== password) {
+    derived = { password, secret: scryptSync(password, "bos-ia:session:v1", 32).toString("base64url") };
+  }
+  return derived.secret;
+}
+
+/** Hébergé sur Vercel : réglages dans le projet Vercel, pas de disque persistant. */
+export function isVercel() {
+  return Boolean(process.env.VERCEL);
+}
+
 export function getAuthConfig() {
   const password = trimOrNull(process.env.BOS_ADMIN_PASSWORD);
-  const secret = trimOrNull(process.env.BOS_SESSION_SECRET);
+  const strongPassword = password && password.length >= MIN_PASSWORD_LENGTH ? password : null;
+  const secret =
+    trimOrNull(process.env.BOS_SESSION_SECRET) ?? (strongPassword ? derivedSessionSecret(strongPassword) : null);
   const problems = [
     !password ? "BOS_ADMIN_PASSWORD manquant" : null,
-    password && password.length < MIN_PASSWORD_LENGTH
+    password && !strongPassword
       ? `BOS_ADMIN_PASSWORD trop court (${MIN_PASSWORD_LENGTH} caractères minimum)`
       : null,
-    !secret ? "BOS_SESSION_SECRET manquant" : null,
     secret && secret.length < MIN_SECRET_LENGTH
       ? `BOS_SESSION_SECRET trop court (${MIN_SECRET_LENGTH} caractères minimum)`
       : null,

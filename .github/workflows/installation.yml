@@ -1,0 +1,102 @@
+name: Installation du cockpit
+
+# Termine l'installation de BOS-IA sur Hostinger sans rien saisir dans le
+# gestionnaire de fichiers :
+# - transmet au serveur les secrets de ce dépôt (BOS_CRON_SECRET, et s'ils
+#   existent ANTHROPIC_API_KEY, DB_*, SMTP_*, TIDYCAL_*), enregistrés dans
+#   ~/bos-ia.env sur Hostinger ;
+# - tant que le mot de passe administrateur n'existe pas, affiche dans le
+#   résumé de l'exécution un lien d'installation à usage unique.
+# Aucun secret partagé : le serveur vérifie un jeton OIDC signé par GitHub, et
+# n'accepte que ce fichier, sur main, dans le dépôt privé BOS-IA-Hostinger.
+# Relançable sans risque (après ajout ou changement d'un secret, par exemple).
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Adresse du cockpit (défaut : BOS_APP_URL, puis bos.jamaliance.com et app.jamaliance.com)"
+        required: false
+
+permissions:
+  id-token: write
+
+jobs:
+  installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dépôt privé uniquement
+        if: ${{ !github.event.repository.private }}
+        run: |
+          echo "::error::À lancer depuis le dépôt privé BOS-IA-Hostinger (le lien d'installation ne doit pas être public)."
+          exit 1
+
+      - name: Envoyer les réglages et obtenir le lien
+        env:
+          ADRESSES: ${{ inputs.url || vars.BOS_APP_URL || 'https://bos.jamaliance.com https://app.jamaliance.com' }}
+          BOS_CRON_SECRET: ${{ secrets.BOS_CRON_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BOS_AGENTS_MODEL: ${{ secrets.BOS_AGENTS_MODEL }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          BOS_ALERTES_EMAIL: ${{ secrets.BOS_ALERTES_EMAIL }}
+          TIDYCAL_API_TOKEN: ${{ secrets.TIDYCAL_API_TOKEN }}
+          TIDYCAL_BOOKING_TYPE_ID: ${{ secrets.TIDYCAL_BOOKING_TYPE_ID }}
+        run: |
+          set -euo pipefail
+          # Les sites du compte Hostinger partagent ~/bos-ia.env : un seul appel suffit,
+          # puis le lien est donné pour chaque adresse qui sert déjà cette version.
+          a_jour=()
+          for adresse in $ADRESSES; do
+            adresse="${adresse%/}"
+            page=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "$adresse/installation" || true)
+            echo "$adresse/installation : HTTP $page"
+            [ "$page" = "200" ] && a_jour+=("$adresse")
+          done
+          if [ ${#a_jour[@]} -eq 0 ]; then
+            echo "::error::Aucune adresse ne sert encore la page /installation : fusionnez la PR, attendez la fin du déploiement Hostinger, puis relancez."
+            exit 1
+          fi
+          BOS_APP_URL="${a_jour[0]}"
+          oidc=$(curl -sS --fail -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=bos-ia-installation" | jq -r .value)
+          echo "::add-mask::$oidc"
+          jq -n '{variables: ($ENV | with_entries(select(.key | test("^(BOS_CRON_SECRET|ANTHROPIC_API_KEY|BOS_AGENTS_MODEL|DB_[A-Z]+|DATABASE_URL|SMTP_[A-Z]+|BOS_ALERTES_EMAIL|TIDYCAL_[A-Z_]+)$")) | select(.value != "")))}' > corps.json
+          status=$(curl -sS -o reponse.json -w "%{http_code}" --max-time 60 -X POST \
+            -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" \
+            --data @corps.json "$BOS_APP_URL/api/installation" || true)
+          rm -f corps.json
+          code=$(jq -r '.code // empty' reponse.json 2>/dev/null || true)
+          # Journal : noms et état seulement, jamais le code ni les valeurs.
+          jq 'del(.code)' reponse.json 2>/dev/null || cat reponse.json
+          if [ "$status" != "200" ]; then
+            echo "::error::Réponse HTTP $status de $BOS_APP_URL/api/installation (déployez d'abord la dernière version de main)."
+            exit 1
+          fi
+          {
+            echo "## Installation du cockpit BOS-IA"
+            echo
+            echo "Réglages enregistrés sur le serveur : $(jq -r '.variables_enregistrees | if length == 0 then "aucun" else join(", ") end' reponse.json)"
+            echo
+            if [ -n "$code" ]; then
+              echo "**Étape suivante :** ouvrez l'un de ces liens (même code, usage unique) et choisissez le mot de passe administrateur :"
+              echo
+              for adresse in "${a_jour[@]}"; do echo "- $adresse/installation?code=$code"; done
+            elif [ "$(jq -r .acces reponse.json)" = "true" ]; then
+              for adresse in "${a_jour[@]}"; do echo "- Cockpit opérationnel : $adresse/login"; done
+            else
+              echo "Accès pas encore ouvert : $(jq -r '.problemes | join(" ; ")' reponse.json)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f reponse.json
