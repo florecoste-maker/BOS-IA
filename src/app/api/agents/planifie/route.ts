@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   }
   if (!getAgentsConfig().configured) {
     return NextResponse.json(
-      { error: "Agents IA non connectés : ajoutez ANTHROPIC_API_KEY dans hPanel" },
+      { error: `Agents IA non connectés : ajoutez ANTHROPIC_API_KEY dans ${process.env.VERCEL ? "Vercel" : "hPanel"}` },
       { status: 503 },
     );
   }

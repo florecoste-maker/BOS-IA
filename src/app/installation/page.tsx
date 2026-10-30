@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { brand } from "@/lib/brand";
-import { getAuthConfig } from "@/lib/auth";
+import { getAuthConfig, isVercel } from "@/lib/auth";
 import { loadPersistentEnv } from "@/lib/env-files";
 import { ensureInstallationCode } from "@/lib/installation/code";
 
@@ -30,8 +30,9 @@ export default async function InstallationPage({ searchParams }: PageProps<"/ins
 
   loadPersistentEnv();
   const installed = Boolean(getAuthConfig().password);
+  const vercel = isVercel();
   // Code de secours lisible dans le gestionnaire de fichiers si GitHub est indisponible.
-  if (!installed) ensureInstallationCode();
+  if (!installed && !vercel) ensureInstallationCode();
 
   return (
     <main className="mx-auto flex min-h-[100svh] w-full max-w-sm flex-col justify-center px-4 py-16">
@@ -42,7 +43,12 @@ export default async function InstallationPage({ searchParams }: PageProps<"/ins
         Installation du cockpit
       </h1>
 
-      {installed ? (
+      {vercel && !installed ? (
+        <p className="mt-6 text-sm text-ink-muted">
+          Sur Vercel, le mot de passe administrateur se règle dans le projet : Vercel → bos-ia → Settings →
+          Environment Variables → BOS_ADMIN_PASSWORD (12 caractères minimum), puis Redeploy.
+        </p>
+      ) : installed ? (
         <>
           <p className="mt-6 text-sm text-ink-muted">Le cockpit est déjà installé.</p>
           <a href="/login" className="mt-6 block w-full bg-brand px-5 py-3 text-center text-sm font-semibold text-white">

@@ -98,7 +98,8 @@ export function loadPersistentEnv(start = process.cwd()) {
       console.error(`Lecture impossible de ${file} :`, error instanceof Error ? error.message : error);
     }
   }
-  if (process.env.NODE_ENV === "production") ensureSessionSecret();
+  // Vercel : disque en lecture seule, le secret est dérivé du mot de passe (auth.ts).
+  if (process.env.NODE_ENV === "production" && !process.env.VERCEL) ensureSessionSecret();
 }
 
 /** Relecture limitée à une toutes les 10 s : prend en compte un fichier créé ou complété après le démarrage. */

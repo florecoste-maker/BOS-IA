@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { brand } from "@/lib/brand";
-import { getAuthConfig, safeNextPath } from "@/lib/auth";
+import { getAuthConfig, isVercel, safeNextPath } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: `Connexion — ${brand.product}`,
@@ -13,6 +13,8 @@ const messages: Record<string, string> = {
   bloque: "Trop de tentatives. Réessayez dans 15 minutes.",
   config:
     "Cockpit pas encore installé : dans GitHub, lancez le workflow « Installation du cockpit » du dépôt BOS-IA-Hostinger, puis ouvrez le lien qu'il affiche.",
+  config_vercel:
+    "Cockpit pas encore configuré : dans Vercel → projet bos-ia → Settings → Environment Variables, ajoutez BOS_ADMIN_PASSWORD (12 caractères minimum), puis redéployez.",
 };
 
 const notices: Record<string, string> = {
@@ -40,13 +42,13 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
       {erreur && messages[erreur] ? (
         <p className="mt-6 border-l-2 border-danger bg-surface px-3 py-2 text-sm">
-          {messages[erreur]}
+          {erreur === "config" && isVercel() ? messages.config_vercel : messages[erreur]}
           {problems.length ? (
             <span className="mt-1 block text-xs text-ink-muted">
               Vu par le serveur : {problems.join(" ; ")}.
             </span>
           ) : null}
-          {erreur === "config" ? (
+          {erreur === "config" && !isVercel() ? (
             <a href="/installation" className="mt-2 block text-xs font-semibold text-brand">
               J&apos;ai un code d&apos;installation →
             </a>

@@ -142,6 +142,26 @@ npm run lint
 `node server.js`, qui démarre `.next/standalone/server.js` sur `0.0.0.0` (port lu
 dans `PORT`). L'écoute ne dépend donc pas de la variable système `HOSTNAME`.
 
+## Déploiement Vercel (bos-ia.vercel.app)
+
+Projet Vercel `bos-ia`, relié au dépôt public `florecoste-maker/BOS-IA`, branche
+`main` (déploiement automatique à chaque fusion). Seule l'adresse de production
+`https://bos-ia.vercel.app` est publique ; les préversions sont protégées par
+l'authentification Vercel.
+
+Vercel transmet ses variables à l'application. Dans Vercel → projet **bos-ia** →
+**Settings → Environment Variables** (environnement *Production*), puis
+**Deployments → Redeploy** :
+- `BOS_ADMIN_PASSWORD` (12 caractères minimum) : **seule variable obligatoire**.
+  Sans `BOS_SESSION_SECRET`, le secret de session en est dérivé (scrypt) ;
+  changer le mot de passe ferme les sessions ouvertes ;
+- `ANTHROPIC_API_KEY` : agents IA ;
+- optionnels : `BOS_SESSION_SECRET`, `DB_*`, `SMTP_*`, `BOS_CRON_SECRET`.
+
+Sans base MySQL, Vercel tourne en mode démonstration (données en mémoire, propres
+à chaque instance et réinitialisées). La page `/installation` et le fichier
+`bos-ia.env` ne servent que sur Hostinger.
+
 ## Base de données
 
 Sans base configurée, le cockpit tourne en **mode démonstration** : données fictives

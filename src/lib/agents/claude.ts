@@ -254,7 +254,9 @@ async function analyse(repo: Repository, agent: Agent) {
   const { apiKey, model, configured } = getAgentsConfig();
   if (!configured) {
     throw new AgentRunError(
-      "Agents IA non connectés : ajoutez ANTHROPIC_API_KEY dans hPanel puis redéployez.",
+      process.env.VERCEL
+        ? "Agents IA non connectés : ajoutez ANTHROPIC_API_KEY dans Vercel (Settings → Environment Variables) puis redéployez."
+        : "Agents IA non connectés : ajoutez ANTHROPIC_API_KEY dans hPanel puis redéployez.",
       503,
     );
   }

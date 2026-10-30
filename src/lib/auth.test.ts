@@ -71,3 +71,24 @@ describe("Accès cockpit BOS-IA", () => {
     assert.equal(safeNextPath("/application"), "/app");
   });
 });
+
+describe("Secret de session dérivé (Vercel)", () => {
+  afterEach(() => {
+    delete process.env.BOS_ADMIN_PASSWORD;
+    delete process.env.BOS_SESSION_SECRET;
+  });
+
+  it("une seule variable suffit : secret stable, propre au mot de passe", () => {
+    delete process.env.BOS_SESSION_SECRET;
+    process.env.BOS_ADMIN_PASSWORD = PASSWORD;
+    const config = getAuthConfig();
+    assert.equal(config.configured, true);
+    assert.ok(config.secret && config.secret.length >= 32 && config.secret !== PASSWORD);
+    const token = createSessionToken(undefined);
+    assert.equal(verifySessionToken(token)?.uid, "secours");
+    process.env.BOS_ADMIN_PASSWORD = `${PASSWORD}-change`;
+    assert.equal(verifySessionToken(token), null, "changer le mot de passe ferme les sessions");
+    process.env.BOS_ADMIN_PASSWORD = "court";
+    assert.deepEqual(getAuthConfig().problems, ["BOS_ADMIN_PASSWORD trop court (12 caractères minimum)"]);
+  });
+});

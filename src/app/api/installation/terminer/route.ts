@@ -6,6 +6,7 @@ import {
   createSessionToken,
   getAuthConfig,
   isLoginBlocked,
+  isVercel,
   recordLoginFailure,
 } from "@/lib/auth";
 import { audit, clientIp } from "@/lib/audit";
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
 
   loadPersistentEnv();
   if (getAuthConfig().password) return redirectTo("/login?installe=deja");
+  if (isVercel()) return redirectTo("/installation");
   if (isLoginBlocked(`installation:${ip}`)) return back("bloque", code);
   if (!checkInstallationCode(code)) {
     recordLoginFailure(`installation:${ip}`);
