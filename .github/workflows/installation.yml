@@ -20,6 +20,9 @@ on:
 
 permissions:
   id-token: write
+  # Lien d'installation déposé dans un ticket du dépôt privé : le résumé
+  # d'exécution ne s'affiche pas dans l'application GitHub sur iPhone.
+  issues: write
 
 jobs:
   installer:
@@ -35,6 +38,7 @@ jobs:
       - name: Envoyer les réglages et obtenir le lien
         env:
           ADRESSES: ${{ inputs.url || vars.BOS_APP_URL || 'https://bos.jamaliance.com https://app.jamaliance.com' }}
+          GH_TOKEN: ${{ github.token }}
           BOS_CRON_SECRET: ${{ secrets.BOS_CRON_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BOS_AGENTS_MODEL: ${{ secrets.BOS_AGENTS_MODEL }}
@@ -106,4 +110,23 @@ jobs:
               echo "Accès pas encore ouvert : $(jq -r '.problemes | join(" ; ")' reponse.json)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$code" ]; then
+            {
+              echo "Lien d'installation à usage unique (créé par le workflow « Installation du cockpit »)."
+              echo
+              for adresse in "${a_jour[@]}"; do echo "- [Ouvrir l'installation sur ${adresse#https://}](<$adresse/installation?code=$code>)"; done
+              echo
+              echo "Si le champ « Code d'installation » est vide, copiez-y ce code :"
+              echo
+              echo '```'
+              echo "$code"
+              echo '```'
+              echo
+              echo "Une fois le mot de passe enregistré, ce code ne sert plus : fermez ce ticket."
+            } > ticket.md
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "Installation du cockpit BOS-IA : lien à usage unique" --body-file ticket.md \
+              | sed 's#^#Ticket créé : #'
+            rm -f ticket.md
+          fi
           rm -f reponse.json
