@@ -99,20 +99,33 @@ npm run lint
    production (`NODE_ENV=production`).
 
 3. Domaine / sous-domaine : **app.jamaliance.com** (laisser jamaliance.com sur Horizons)
-4. **Variables : fichier `~/bos-ia.env`.** Hostinger lance l'application par
+4. **Accès au cockpit : workflow « Installation du cockpit »** (aucune saisie
+   dans le gestionnaire de fichiers). Hostinger lance l'application par
    LiteSpeed (`lsnode.js`) depuis un dossier recréé à chaque déploiement
-   (`domains/app.jamaliance.com/hbuilds/versions/<id>/nodejs`) et le processus
-   ne reçoit pas les variables saisies dans hPanel. Créer avec le gestionnaire
-   de fichiers, à la racine du compte (`~`, hors de tout dossier public), un
-   fichier `bos-ia.env` au format `NOM=valeur` (une variable par ligne, sans
-   guillemets). Il est cherché dans le dossier de l'application puis dans chacun
-   de ses parents, survit aux déploiements et se lit au démarrage : après
-   modification, redémarrer l'application. `/api/health?diagnostic=1` indique
-   s'il a été chargé et quelles variables le processus voit (noms seulement).
-   Variables d'environnement **obligatoires** pour ouvrir le cockpit :
-   `BOS_ADMIN_PASSWORD` (12 caractères minimum) et `BOS_SESSION_SECRET`
-   (32 caractères minimum, `openssl rand -hex 32`). Sans elles, `/app` et `/api`
-   restent fermés (page de connexion avec un message de configuration).
+   (`domains/<domaine>/hbuilds/versions/<id>/nodejs`) et le processus ne reçoit
+   pas les variables saisies dans hPanel. Les réglages vivent donc dans
+   `~/bos-ia.env`, à la racine du compte (hors de tout dossier public), qui
+   survit aux déploiements :
+   - `BOS_SESSION_SECRET` : généré par le serveur au premier démarrage
+     (`~/bos-ia-session.key`), jamais saisi ni affiché ;
+   - `BOS_ADMIN_PASSWORD` : GitHub → dépôt privé **BOS-IA-Hostinger** →
+     Actions → **Installation du cockpit** → *Run workflow*. Le résumé de
+     l'exécution donne un lien `/installation?code=…` à usage unique, où l'on
+     choisit le mot de passe (12 caractères minimum) ; il est écrit dans
+     `~/bos-ia.env` et l'on entre directement dans le cockpit ;
+   - le même workflow recopie dans `~/bos-ia.env` les secrets du dépôt
+     (`BOS_CRON_SECRET`, `ANTHROPIC_API_KEY`, `DB_*`, `SMTP_*`, `TIDYCAL_*`) :
+     ajouter ou changer un secret dans GitHub, puis relancer le workflow
+     (redémarrer l'application si une valeur déjà connue a changé).
+
+   Le serveur n'accepte que ce workflow, sur `main`, dans ce dépôt privé
+   (jeton OIDC signé par GitHub, aucun secret partagé ; autre dépôt :
+   `BOS_INSTALLATION_DEPOT`). Secours sans GitHub : le code est aussi dans
+   `~/bos-ia-installation.txt` tant que l'installation n'est pas faite. On peut
+   toujours écrire `bos-ia.env` à la main (`NOM=valeur`, une variable par
+   ligne). `/api/health?diagnostic=1` indique quels fichiers sont chargés et
+   quelles variables le processus voit (noms seulement). Sans mot de passe
+   administrateur, `/app` et `/api` restent fermés.
 5. Les URLs ont des valeurs Jamaliance par défaut (`https://jamaliance.com`,
    `https://app.jamaliance.com`, calendrier TidyCal de jamaliance.com/reservation) ;
    les variables `NEXT_PUBLIC_*` de `.env.example` ne servent qu'à les changer et

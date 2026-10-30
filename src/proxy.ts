@@ -5,7 +5,8 @@ import { resolveActor } from "@/lib/session";
 
 /**
  * Routes ouvertes sans session : connexion, sonde de santé Hostinger, et
- * déclencheur des agents planifiés et sauvegarde (protégés par le secret BOS_CRON_SECRET).
+ * déclencheur des agents planifiés et sauvegarde (protégés par le secret BOS_CRON_SECRET),
+ * installation (jeton OIDC GitHub, puis code à usage unique).
  */
 const PUBLIC_API = [
   "/api/auth/login",
@@ -13,6 +14,8 @@ const PUBLIC_API = [
   "/api/health",
   "/api/agents/planifie",
   "/api/sauvegarde",
+  "/api/installation",
+  "/api/installation/terminer",
 ];
 
 /** Réservé aux administrateurs : comptes, journal, e-mail de test. */
@@ -26,15 +29,12 @@ const ADMIN_PATHS = [
 
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  // bos-ia.env créé ou complété après le démarrage : pris en compte sans redémarrer.
+  retryPersistentEnv();
   if (PUBLIC_API.includes(pathname)) return NextResponse.next();
 
   const isApi = pathname.startsWith("/api/");
-  let auth = getAuthConfig();
-  if (!auth.configured) {
-    // bos-ia.env créé ou corrigé après le démarrage : pris en compte sans redémarrer.
-    retryPersistentEnv();
-    auth = getAuthConfig();
-  }
+  const auth = getAuthConfig();
 
   // Fermé par défaut : sans mot de passe configuré, le cockpit reste inaccessible.
   if (!auth.configured) {

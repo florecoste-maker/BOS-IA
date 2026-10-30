@@ -12,12 +12,17 @@ const messages: Record<string, string> = {
   identifiants: "E-mail ou mot de passe incorrect, ou compte désactivé.",
   bloque: "Trop de tentatives. Réessayez dans 15 minutes.",
   config:
-    "Accès non configuré : renseignez BOS_ADMIN_PASSWORD et BOS_SESSION_SECRET dans hPanel, puis redéployez.",
+    "Cockpit pas encore installé : dans GitHub, lancez le workflow « Installation du cockpit » du dépôt BOS-IA-Hostinger, puis ouvrez le lien qu'il affiche.",
+};
+
+const notices: Record<string, string> = {
+  deja: "Le cockpit est déjà installé : connectez-vous.",
 };
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const params = await searchParams;
   const erreur = typeof params.erreur === "string" ? params.erreur : null;
+  const installe = typeof params.installe === "string" ? notices[params.installe] : undefined;
   const next = safeNextPath(typeof params.next === "string" ? params.next : null);
   // Noms des réglages en cause (jamais leurs valeurs) : manquant ou trop court.
   const problems = erreur === "config" ? getAuthConfig().problems : [];
@@ -31,6 +36,8 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         Accès au cockpit
       </h1>
 
+      {installe ? <p className="mt-6 border-l-2 border-brand bg-surface px-3 py-2 text-sm">{installe}</p> : null}
+
       {erreur && messages[erreur] ? (
         <p className="mt-6 border-l-2 border-danger bg-surface px-3 py-2 text-sm">
           {messages[erreur]}
@@ -38,6 +45,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             <span className="mt-1 block text-xs text-ink-muted">
               Vu par le serveur : {problems.join(" ; ")}.
             </span>
+          ) : null}
+          {erreur === "config" ? (
+            <a href="/installation" className="mt-2 block text-xs font-semibold text-brand">
+              J&apos;ai un code d&apos;installation →
+            </a>
           ) : null}
         </p>
       ) : null}
