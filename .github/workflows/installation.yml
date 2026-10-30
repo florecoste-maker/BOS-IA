@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       url:
-        description: "Adresse du cockpit (défaut : BOS_APP_URL, sinon https://bos.jamaliance.com)"
+        description: "Adresse du cockpit (défaut : BOS_APP_URL, puis bos.jamaliance.com et app.jamaliance.com)"
         required: false
 
 permissions:
@@ -34,7 +34,7 @@ jobs:
 
       - name: Envoyer les réglages et obtenir le lien
         env:
-          BOS_APP_URL: ${{ inputs.url || vars.BOS_APP_URL || 'https://bos.jamaliance.com' }}
+          ADRESSES: ${{ inputs.url || vars.BOS_APP_URL || 'https://bos.jamaliance.com https://app.jamaliance.com' }}
           BOS_CRON_SECRET: ${{ secrets.BOS_CRON_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BOS_AGENTS_MODEL: ${{ secrets.BOS_AGENTS_MODEL }}
@@ -55,7 +55,20 @@ jobs:
           TIDYCAL_BOOKING_TYPE_ID: ${{ secrets.TIDYCAL_BOOKING_TYPE_ID }}
         run: |
           set -euo pipefail
-          BOS_APP_URL="${BOS_APP_URL%/}"
+          # Les sites du compte Hostinger partagent ~/bos-ia.env : un seul appel suffit,
+          # puis le lien est donné pour chaque adresse qui sert déjà cette version.
+          a_jour=()
+          for adresse in $ADRESSES; do
+            adresse="${adresse%/}"
+            page=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "$adresse/installation" || true)
+            echo "$adresse/installation : HTTP $page"
+            [ "$page" = "200" ] && a_jour+=("$adresse")
+          done
+          if [ ${#a_jour[@]} -eq 0 ]; then
+            echo "::error::Aucune adresse ne sert encore la page /installation : fusionnez la PR, attendez la fin du déploiement Hostinger, puis relancez."
+            exit 1
+          fi
+          BOS_APP_URL="${a_jour[0]}"
           oidc=$(curl -sS --fail -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=bos-ia-installation" | jq -r .value)
           echo "::add-mask::$oidc"
@@ -77,11 +90,11 @@ jobs:
             echo "Réglages enregistrés sur le serveur : $(jq -r '.variables_enregistrees | if length == 0 then "aucun" else join(", ") end' reponse.json)"
             echo
             if [ -n "$code" ]; then
-              echo "**Étape suivante :** ouvrez ce lien (usage unique) et choisissez le mot de passe administrateur :"
+              echo "**Étape suivante :** ouvrez l'un de ces liens (même code, usage unique) et choisissez le mot de passe administrateur :"
               echo
-              echo "$BOS_APP_URL/installation?code=$code"
+              for adresse in "${a_jour[@]}"; do echo "- $adresse/installation?code=$code"; done
             elif [ "$(jq -r .acces reponse.json)" = "true" ]; then
-              echo "Le cockpit est opérationnel : $BOS_APP_URL/login"
+              for adresse in "${a_jour[@]}"; do echo "- Cockpit opérationnel : $adresse/login"; done
             else
               echo "Accès pas encore ouvert : $(jq -r '.problemes | join(" ; ")' reponse.json)"
             fi
