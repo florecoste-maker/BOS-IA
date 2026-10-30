@@ -90,9 +90,16 @@ jobs:
             echo "Réglages enregistrés sur le serveur : $(jq -r '.variables_enregistrees | if length == 0 then "aucun" else join(", ") end' reponse.json)"
             echo
             if [ -n "$code" ]; then
-              echo "**Étape suivante :** ouvrez l'un de ces liens (même code, usage unique) et choisissez le mot de passe administrateur :"
+              echo "**Étape suivante :** ouvrez la page d'installation et choisissez le mot de passe administrateur (usage unique) :"
               echo
-              for adresse in "${a_jour[@]}"; do echo "- $adresse/installation?code=$code"; done
+              # Lien Markdown explicite : un lien nu peut être abîmé à l'affichage (« _ » lu comme italique).
+              for adresse in "${a_jour[@]}"; do echo "- [Ouvrir l'installation sur ${adresse#https://}](<$adresse/installation?code=$code>)"; done
+              echo
+              echo "Si le champ « Code d'installation » est vide, copiez-y ce code :"
+              echo
+              echo '```'
+              echo "$code"
+              echo '```'
             elif [ "$(jq -r .acces reponse.json)" = "true" ]; then
               for adresse in "${a_jour[@]}"; do echo "- Cockpit opérationnel : $adresse/login"; done
             else
