@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthConfig } from "@/lib/auth";
+import { checkDatabase } from "@/lib/db/connection-test";
 import { ensureSessionSecret, loadPersistentEnv, writeEnvVariables } from "@/lib/env-files";
 import { issueInstallationCode } from "@/lib/installation/code";
 import { verifyGithubToken } from "@/lib/installation/github-oidc";
@@ -53,8 +54,9 @@ export async function POST(request: Request) {
     if (TRANSMISSIBLES.has(key) && typeof value === "string" && value.trim()) values[key] = value.trim();
   }
 
+  loadPersistentEnv();
+  const baseDeDonnees = await checkDatabase(values);
   try {
-    loadPersistentEnv();
     if (Object.keys(values).length) writeEnvVariables(values);
     ensureSessionSecret();
   } catch (error) {
@@ -69,6 +71,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     service: "bos-ia",
     variables_enregistrees: Object.keys(values).sort(),
+    base_de_donnees: baseDeDonnees,
     acces: auth.configured,
     problemes: auth.problems,
     ...(installer ? { code: issueInstallationCode() } : {}),
