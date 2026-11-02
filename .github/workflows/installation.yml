@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       url:
-        description: "Adresse du cockpit (défaut : BOS_APP_URL, puis bos.jamaliance.com et app.jamaliance.com)"
+        description: "Adresse du cockpit (défaut : BOS_APP_URL, puis app.jamaliance.com et bos.jamaliance.com)"
         required: false
 
 permissions:
@@ -37,7 +37,7 @@ jobs:
 
       - name: Envoyer les réglages et obtenir le lien
         env:
-          ADRESSES: ${{ inputs.url || vars.BOS_APP_URL || 'https://bos.jamaliance.com https://app.jamaliance.com' }}
+          ADRESSES: ${{ inputs.url || vars.BOS_APP_URL || 'https://app.jamaliance.com https://bos.jamaliance.com' }}
           GH_TOKEN: ${{ github.token }}
           BOS_CRON_SECRET: ${{ secrets.BOS_CRON_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
