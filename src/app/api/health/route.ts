@@ -18,7 +18,9 @@ export async function GET(request: Request) {
   if (!getAuthConfig().configured) retryPersistentEnv();
   if (params.get("diagnostic") === "1") {
     // Noms et indicateurs uniquement : jamais la valeur d'une variable.
-    return NextResponse.json({ service: "bos-ia", acces: getAuthConfig().configured, ...getEnvDiagnostic() });
+    // `problemes` : noms des réglages en cause et seuils, jamais leur valeur.
+    const auth = getAuthConfig();
+    return NextResponse.json({ service: "bos-ia", acces: auth.configured, problemes: auth.problems, ...getEnvDiagnostic() });
   }
   if (params.get("complet") !== "1") {
     // `acces` : le cockpit voit ses deux réglages (aucune valeur exposée).

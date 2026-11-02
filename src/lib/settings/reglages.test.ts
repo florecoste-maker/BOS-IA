@@ -127,3 +127,30 @@ describe("Réglage modifié : repris par les autres processus", () => {
     }
   });
 });
+
+describe("Accès : un réglage trop court du site ne ferme pas le cockpit", () => {
+  it("mot de passe court remplacé par celui de bos-ia.env, secret court ignoré", async () => {
+    const { repairAuthEnv } = await import("../env-files");
+    const avant = { p: process.env.BOS_ADMIN_PASSWORD, s: process.env.BOS_SESSION_SECRET };
+    try {
+      process.env.BOS_ADMIN_PASSWORD = "court";
+      process.env.BOS_SESSION_SECRET = "trop-court";
+      repairAuthEnv({ BOS_ADMIN_PASSWORD: "MotDePasseValide2026" });
+      assert.equal(process.env.BOS_ADMIN_PASSWORD, "MotDePasseValide2026");
+      assert.equal(process.env.BOS_SESSION_SECRET, undefined);
+      // Valeur du site valide : jamais remplacée.
+      process.env.BOS_ADMIN_PASSWORD = "AutreMotDePasse2026";
+      repairAuthEnv({ BOS_ADMIN_PASSWORD: "MotDePasseValide2026" });
+      assert.equal(process.env.BOS_ADMIN_PASSWORD, "AutreMotDePasse2026");
+      // Rien de valide dans le fichier : rien ne change.
+      process.env.BOS_ADMIN_PASSWORD = "court";
+      repairAuthEnv({});
+      assert.equal(process.env.BOS_ADMIN_PASSWORD, "court");
+    } finally {
+      if (avant.p === undefined) delete process.env.BOS_ADMIN_PASSWORD;
+      else process.env.BOS_ADMIN_PASSWORD = avant.p;
+      if (avant.s === undefined) delete process.env.BOS_SESSION_SECRET;
+      else process.env.BOS_SESSION_SECRET = avant.s;
+    }
+  });
+});
