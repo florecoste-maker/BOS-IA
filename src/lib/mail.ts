@@ -117,7 +117,7 @@ const domainOf = (address: string) => address.split("@")[1] ?? "";
 
 /**
  * Réglages qui passent la vérification mais font échouer ou classer en spam les
- * envois : à corriger avant d'envoyer aux apprenants.
+ * envois : à corriger avant d'écrire aux clients.
  */
 export function mailWarnings(config: MailConfig) {
   const warnings: string[] = [];

@@ -1,13 +1,25 @@
 /**
  * Moteur MySQL / MariaDB du cockpit BOS-IA.
  * Les tables (préfixe `bos_`) sont créées au premier accès ; seuls les 6 agents
- * (configuration du Digital Nexus) sont insérés : aucune donnée métier fictive.
+ * sont insérés : aucune donnée métier fictive. Clients, missions, factures et
+ * paiements sont saisis dans le cockpit (ou importés).
  */
 import { randomUUID } from "node:crypto";
 import mysql, { type Pool, type PoolConnection, type RowDataPacket } from "mysql2/promise";
 import { computeMetrics } from "@/lib/metrics";
 import { editedOperation } from "@/lib/actions/operations";
 import { STALE_EXECUTION_MS, cleanEdits } from "@/lib/actions/rules";
+import {
+  type InvoiceRecord,
+  deriveInvoice,
+  deriveInvoices,
+  failure,
+  missionBelongs,
+  nextNumber,
+  paymentProblem,
+  round2,
+  settleInvoice,
+} from "@/lib/business";
 import { statusLabel } from "@/lib/format";
 import { store } from "@/lib/store";
 import type {
@@ -16,66 +28,70 @@ import type {
   AgentAction,
   AgentRunLog,
   AuditEntry,
+  Client,
   EmailDraft,
   Invoice,
+  Mission,
+  Payment,
   StatusOperation,
-  Learner,
-  OpcoDossier,
-  TrainingSession,
   User,
 } from "@/lib/types";
 import type { Repository } from "@/lib/data";
 import { getDatabaseConfig, type DatabaseConfig } from "./config";
 
 export const SCHEMA = [
-  `CREATE TABLE IF NOT EXISTS bos_sessions (
+  `CREATE TABLE IF NOT EXISTS bos_clients (
     id VARCHAR(64) PRIMARY KEY,
-    titre VARCHAR(255) NOT NULL,
-    code VARCHAR(64) NOT NULL,
-    debut DATE NOT NULL,
-    fin DATE NOT NULL,
-    formateur VARCHAR(255) NOT NULL,
-    places INT NOT NULL,
-    inscrits INT NOT NULL DEFAULT 0,
+    nom VARCHAR(255) NOT NULL UNIQUE,
+    contact VARCHAR(255) NULL,
+    email VARCHAR(255) NULL,
+    telephone VARCHAR(64) NULL,
+    secteur VARCHAR(255) NULL,
     statut VARCHAR(32) NOT NULL,
-    qualiopi_indicateurs JSON NOT NULL
+    source VARCHAR(255) NULL,
+    notes TEXT NULL,
+    cree_le DATETIME(3) NOT NULL,
+    derniere_activite DATETIME(3) NOT NULL
   ) DEFAULT CHARSET=utf8mb4`,
-  `CREATE TABLE IF NOT EXISTS bos_learners (
+  `CREATE TABLE IF NOT EXISTS bos_missions (
     id VARCHAR(64) PRIMARY KEY,
-    nom VARCHAR(255) NOT NULL,
-    prenom VARCHAR(255) NOT NULL,
-    email VARCHAR(255) NOT NULL,
-    entreprise VARCHAR(255) NULL,
-    status VARCHAR(32) NOT NULL,
-    pipeline_stage VARCHAR(32) NOT NULL,
-    session_id VARCHAR(64) NULL,
-    derniere_activite DATETIME(3) NOT NULL,
-    comprehension_validee TINYINT(1) NOT NULL DEFAULT 0,
-    score_quiz INT NULL,
-    created_at DATETIME(3) NOT NULL
+    code VARCHAR(64) NOT NULL UNIQUE,
+    titre VARCHAR(255) NOT NULL,
+    client_id VARCHAR(64) NOT NULL,
+    type VARCHAR(32) NOT NULL,
+    statut VARCHAR(32) NOT NULL,
+    montant_ht DECIMAL(12,2) NOT NULL DEFAULT 0,
+    debut DATE NULL,
+    fin DATE NULL,
+    notes TEXT NULL,
+    cree_le DATETIME(3) NOT NULL,
+    INDEX idx_bos_missions_client (client_id)
   ) DEFAULT CHARSET=utf8mb4`,
-  `CREATE TABLE IF NOT EXISTS bos_opco_dossiers (
-    id VARCHAR(64) PRIMARY KEY,
-    reference VARCHAR(64) NOT NULL,
-    organisme VARCHAR(255) NOT NULL,
-    apprenant_id VARCHAR(64) NOT NULL,
-    session_id VARCHAR(64) NOT NULL,
-    montant DECIMAL(12,2) NOT NULL,
-    status VARCHAR(32) NOT NULL,
-    completude INT NOT NULL DEFAULT 0,
-    pieces_manquantes JSON NOT NULL,
-    updated_at DATETIME(3) NOT NULL
-  ) DEFAULT CHARSET=utf8mb4`,
-  `CREATE TABLE IF NOT EXISTS bos_invoices (
+  `CREATE TABLE IF NOT EXISTS bos_factures (
     id VARCHAR(64) PRIMARY KEY,
     numero VARCHAR(64) NOT NULL UNIQUE,
-    client VARCHAR(255) NOT NULL,
-    dossier_opco_id VARCHAR(64) NULL,
+    client_id VARCHAR(64) NOT NULL,
+    mission_id VARCHAR(64) NULL,
+    objet VARCHAR(255) NULL,
     montant_ht DECIMAL(12,2) NOT NULL,
-    acompte_pct INT NOT NULL DEFAULT 0,
-    status VARCHAR(32) NOT NULL,
+    taux_tva DECIMAL(5,2) NOT NULL DEFAULT 20,
+    statut VARCHAR(32) NOT NULL,
     emise_le DATE NOT NULL,
-    echeance DATE NOT NULL
+    echeance DATE NOT NULL,
+    payee_le DATE NULL,
+    recurrence VARCHAR(16) NULL,
+    INDEX idx_bos_factures_client (client_id)
+  ) DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS bos_paiements (
+    id VARCHAR(64) PRIMARY KEY,
+    numero VARCHAR(64) NOT NULL UNIQUE,
+    facture_id VARCHAR(64) NOT NULL,
+    montant DECIMAL(12,2) NOT NULL,
+    date_paiement DATE NOT NULL,
+    mode VARCHAR(32) NOT NULL,
+    reference VARCHAR(255) NULL,
+    cree_le DATETIME(3) NOT NULL,
+    INDEX idx_bos_paiements_facture (facture_id)
   ) DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS bos_agents (
     id VARCHAR(64) PRIMARY KEY,
@@ -140,9 +156,6 @@ export const SCHEMA = [
  * pas « ADD COLUMN IF NOT EXISTS » : on vérifie dans information_schema.
  */
 export const MIGRATIONS: Array<{ table: string; column: string; ddl: string }> = [
-  { table: "bos_invoices", column: "email_client", ddl: "VARCHAR(255) NULL" },
-  { table: "bos_invoices", column: "payee_le", ddl: "DATE NULL" },
-  { table: "bos_invoices", column: "recurrence", ddl: "VARCHAR(16) NULL" },
   { table: "bos_agent_actions", column: "email_cible", ddl: "VARCHAR(16) NULL" },
   { table: "bos_agent_actions", column: "email_ref", ddl: "VARCHAR(64) NULL" },
   { table: "bos_agent_actions", column: "email_objet", ddl: "VARCHAR(255) NULL" },
@@ -278,95 +291,71 @@ export function fromSqlDateTime(value: string) {
   return new Date(`${value.replace(" ", "T")}Z`).toISOString();
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/** MySQL renvoie un JSON déjà décodé, MariaDB une chaîne. */
-export function parseJsonArray(value: unknown): string[] {
-  const parsed = typeof value === "string" ? JSON.parse(value) : value;
-  return Array.isArray(parsed) ? parsed.map(String) : [];
-}
-
-/** Jours de retard calculés à la lecture : une facture payée n'est jamais en retard. */
-export function daysLate(
-  echeance: string,
-  status: Invoice["status"],
-  now = today(),
-  payeeLe?: string,
-) {
-  if (status === "payee" || payeeLe) return 0;
-  const diff = (Date.parse(now) - Date.parse(echeance)) / 86_400_000;
-  return diff > 0 ? Math.floor(diff) : 0;
-}
-
 type Row = RowDataPacket & Record<string, unknown>;
 
-function toSession(r: Row): TrainingSession {
-  return {
-    id: String(r.id),
-    titre: String(r.titre),
-    code: String(r.code),
-    debut: String(r.debut),
-    fin: String(r.fin),
-    formateur: String(r.formateur),
-    places: Number(r.places),
-    inscrits: Number(r.inscrits),
-    statut: r.statut as TrainingSession["statut"],
-    qualiopiIndicateurs: parseJsonArray(r.qualiopi_indicateurs),
-  };
-}
+const opt = (v: unknown) => (v == null || v === "" ? undefined : String(v));
+/** Chaîne vide → NULL en base (champ facultatif effacé). */
+const nul = (v: string | undefined) => (v ? v : null);
 
-function toLearner(r: Row): Learner {
+function toClient(r: Row): Client {
   return {
     id: String(r.id),
     nom: String(r.nom),
-    prenom: String(r.prenom),
-    email: String(r.email),
-    entreprise: r.entreprise == null ? undefined : String(r.entreprise),
-    status: r.status as Learner["status"],
-    pipelineStage: r.pipeline_stage as Learner["pipelineStage"],
-    sessionId: r.session_id == null ? undefined : String(r.session_id),
+    contact: opt(r.contact),
+    email: opt(r.email),
+    telephone: opt(r.telephone),
+    secteur: opt(r.secteur),
+    statut: r.statut as Client["statut"],
+    source: opt(r.source),
+    notes: opt(r.notes),
+    creeLe: fromSqlDateTime(String(r.cree_le)),
     derniereActivite: fromSqlDateTime(String(r.derniere_activite)),
-    comprehensionValidee: Boolean(Number(r.comprehension_validee)),
-    scoreQuiz: r.score_quiz == null ? undefined : Number(r.score_quiz),
-    createdAt: fromSqlDateTime(String(r.created_at)),
   };
 }
 
-function toDossier(r: Row): OpcoDossier {
+function toMission(r: Row): Mission {
   return {
     id: String(r.id),
-    reference: String(r.reference),
-    organisme: String(r.organisme),
-    apprenantId: String(r.apprenant_id),
-    sessionId: String(r.session_id),
-    montant: Number(r.montant),
-    status: r.status as OpcoDossier["status"],
-    completude: Number(r.completude),
-    piecesManquantes: parseJsonArray(r.pieces_manquantes),
-    updatedAt: fromSqlDateTime(String(r.updated_at)),
+    code: String(r.code),
+    titre: String(r.titre),
+    clientId: String(r.client_id),
+    type: r.type as Mission["type"],
+    statut: r.statut as Mission["statut"],
+    montantHT: Number(r.montant_ht),
+    debut: opt(r.debut),
+    fin: opt(r.fin),
+    notes: opt(r.notes),
+    creeLe: fromSqlDateTime(String(r.cree_le)),
   };
 }
 
-function toInvoice(r: Row): Invoice {
-  const status = r.status as Invoice["status"];
-  const echeance = String(r.echeance);
-  const payeeLe = r.payee_le == null ? undefined : String(r.payee_le);
+function toInvoiceRecord(r: Row): InvoiceRecord {
   return {
     id: String(r.id),
     numero: String(r.numero),
-    client: String(r.client),
-    dossierOpcoId: r.dossier_opco_id == null ? undefined : String(r.dossier_opco_id),
+    clientId: String(r.client_id),
+    missionId: opt(r.mission_id),
+    objet: opt(r.objet),
     montantHT: Number(r.montant_ht),
-    acomptePct: Number(r.acompte_pct),
-    status,
+    tauxTva: Number(r.taux_tva),
+    status: r.statut as Invoice["status"],
     emiseLe: String(r.emise_le),
-    echeance,
-    joursRetard: daysLate(echeance, status, undefined, payeeLe),
-    emailClient: r.email_client == null ? undefined : String(r.email_client),
-    payeeLe,
-    recurrence: r.recurrence == null ? undefined : (r.recurrence as Invoice["recurrence"]),
+    echeance: String(r.echeance),
+    payeeLe: opt(r.payee_le),
+    recurrence: opt(r.recurrence) as Invoice["recurrence"],
+  };
+}
+
+function toPayment(r: Row): Payment {
+  return {
+    id: String(r.id),
+    numero: String(r.numero),
+    factureId: String(r.facture_id),
+    montant: Number(r.montant),
+    date: String(r.date_paiement),
+    mode: r.mode as Payment["mode"],
+    reference: opt(r.reference),
+    creeLe: fromSqlDateTime(String(r.cree_le)),
   };
 }
 
@@ -478,146 +467,284 @@ async function select<T>(
   return rows.map(map);
 }
 
-const getSessions = () => select("SELECT * FROM bos_sessions ORDER BY debut", toSession);
-const getLearners = () => select("SELECT * FROM bos_learners ORDER BY created_at", toLearner);
-const getOpcoDossiers = () =>
-  select("SELECT * FROM bos_opco_dossiers ORDER BY updated_at DESC", toDossier);
-const getInvoices = () => select("SELECT * FROM bos_invoices ORDER BY emise_le DESC", toInvoice);
+const getClients = () => select("SELECT * FROM bos_clients ORDER BY nom", toClient);
+const getMissions = () => select("SELECT * FROM bos_missions ORDER BY cree_le DESC", toMission);
+const getPayments = () =>
+  select("SELECT * FROM bos_paiements ORDER BY date_paiement DESC, numero DESC", toPayment);
 const getAgents = () => select("SELECT * FROM bos_agents ORDER BY id", toAgent);
 const getAgentActions = () =>
   select("SELECT * FROM bos_agent_actions ORDER BY created_at DESC LIMIT 200", toAction);
 
-async function findLearner(id: string, conn?: PoolConnection) {
-  const rows = await select(
-    "SELECT * FROM bos_learners WHERE id = ?",
-    toLearner,
-    [id],
-    conn,
-  );
-  return rows[0] ?? null;
+async function getInvoices() {
+  const [records, clients, payments] = await Promise.all([
+    select("SELECT * FROM bos_factures ORDER BY emise_le DESC, numero DESC", toInvoiceRecord),
+    getClients(),
+    getPayments(),
+  ]);
+  return deriveInvoices(records, clients, payments);
 }
 
-/** Prochain numéro de facture de l'année : FA-2026-0001, FA-2026-0002… */
-async function nextInvoiceNumber(conn: PoolConnection) {
-  const prefix = `FA-${new Date().getUTCFullYear()}-`;
+async function findClient(id: string, conn?: PoolConnection) {
+  return (await select("SELECT * FROM bos_clients WHERE id = ?", toClient, [id], conn))[0];
+}
+
+async function findMission(id: string, conn?: PoolConnection) {
+  return (await select("SELECT * FROM bos_missions WHERE id = ?", toMission, [id], conn))[0];
+}
+
+/** Facture complète (client, paiements) ; `lock` la verrouille dans une transaction. */
+async function findInvoice(id: string, conn?: PoolConnection, lock = false) {
+  const record = (
+    await select(`SELECT * FROM bos_factures WHERE id = ?${lock ? " FOR UPDATE" : ""}`, toInvoiceRecord, [id], conn)
+  )[0];
+  if (!record) return undefined;
+  const [client, payments] = await Promise.all([
+    findClient(record.clientId, conn),
+    select("SELECT * FROM bos_paiements WHERE facture_id = ?", toPayment, [id], conn),
+  ]);
+  return { record, invoice: deriveInvoice(record, client, payments), payments };
+}
+
+/** Prochain numéro d'une série (FA, MIS, REG) de l'année, sous verrou pour éviter les doublons. */
+async function nextSerial(conn: PoolConnection, table: string, column: string, prefix: string, year: number) {
   const [rows] = await conn.query<Row[]>(
-    "SELECT numero FROM bos_invoices WHERE numero LIKE ? ORDER BY numero DESC LIMIT 1 FOR UPDATE",
-    [`${prefix}%`],
+    `SELECT ${column} AS n FROM ${table} WHERE ${column} LIKE ? ORDER BY ${column} DESC LIMIT 1 FOR UPDATE`,
+    [`${prefix}-${year}-%`],
   );
-  const last = rows[0] ? Number(String(rows[0].numero).slice(prefix.length)) || 0 : 0;
-  return `${prefix}${String(last + 1).padStart(4, "0")}`;
+  return nextNumber(prefix, year, rows.map((r) => String(r.n)));
 }
 
-function addDays(days: number) {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+const isDuplicate = (error: unknown) => (error as { code?: string }).code === "ER_DUP_ENTRY";
+const nowSql = () => toSqlDateTime(new Date().toISOString());
+
+async function touchClient(conn: PoolConnection, clientId: string) {
+  await conn.execute("UPDATE bos_clients SET derniere_activite = ? WHERE id = ?", [nowSql(), clientId]);
 }
 
 /* ---------- moteur ---------- */
 
 export const mysqlRepository: Repository = {
   mode: "mysql",
-  getSessions,
-  getLearners,
-  getOpcoDossiers,
+  getClients,
+  getMissions,
   getInvoices,
+  getPayments,
   getAgents,
   getAgentActions,
 
   async getMetrics() {
-    const [learners, opcoDossiers, invoices, agents, agentActions] = await Promise.all([
-      getLearners(),
-      getOpcoDossiers(),
+    const [clients, missions, invoices, payments, agents, agentActions] = await Promise.all([
+      getClients(),
+      getMissions(),
       getInvoices(),
+      getPayments(),
       getAgents(),
       getAgentActions(),
     ]);
-    return computeMetrics({ learners, opcoDossiers, invoices, agents, agentActions });
+    return computeMetrics({ clients, missions, invoices, payments, agents, agentActions });
   },
 
-  async updateLearnerStatus(id, status) {
-    const now = toSqlDateTime(new Date().toISOString());
-    const certified = status === "certifie";
-    const [result] = await (await db()).execute<mysql.ResultSetHeader>(
-      `UPDATE bos_learners SET status = ?, derniere_activite = ?,
-         pipeline_stage = IF(?, 'completion', pipeline_stage),
-         comprehension_validee = IF(?, 1, comprehension_validee)
-       WHERE id = ?`,
-      [status, now, certified, certified, id],
-    );
-    return result.affectedRows ? findLearner(id) : null;
+  async createClient(input) {
+    const id = `cli-${randomUUID()}`;
+    try {
+      await (await db()).execute(
+        `INSERT INTO bos_clients
+           (id, nom, contact, email, telephone, secteur, statut, source, notes, cree_le, derniere_activite)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          input.nom,
+          nul(input.contact),
+          nul(input.email),
+          nul(input.telephone),
+          nul(input.secteur),
+          input.statut,
+          nul(input.source),
+          nul(input.notes),
+          nowSql(),
+          nowSql(),
+        ],
+      );
+    } catch (error) {
+      if (isDuplicate(error)) return failure(`Un client « ${input.nom} » existe déjà`, 409);
+      throw error;
+    }
+    return { ok: true, value: (await findClient(id))! };
   },
 
-  async validateComprehension(id, score) {
-    const passed = score >= 70;
-    const [result] = await (await db()).execute<mysql.ResultSetHeader>(
-      `UPDATE bos_learners SET comprehension_validee = ?, score_quiz = ?,
-         pipeline_stage = ?, derniere_activite = ? WHERE id = ?`,
-      [
-        passed ? 1 : 0,
-        score,
-        passed ? "certification" : "evaluation",
-        toSqlDateTime(new Date().toISOString()),
-        id,
-      ],
-    );
-    return result.affectedRows ? findLearner(id) : null;
+  async updateClient(id, patch) {
+    const columns = Object.entries(patch)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => [k, k === "nom" || k === "statut" ? v : nul(v as string)] as const);
+    try {
+      const [result] = await (await db()).execute<mysql.ResultSetHeader>(
+        `UPDATE bos_clients SET ${[...columns.map(([c]) => `${c} = ?`), "derniere_activite = ?"].join(", ")} WHERE id = ?`,
+        [...columns.map(([, v]) => v as string | null), nowSql(), id],
+      );
+      if (!result.affectedRows) return failure("Client introuvable", 404);
+    } catch (error) {
+      if (isDuplicate(error)) return failure(`Un client « ${patch.nom} » existe déjà`, 409);
+      throw error;
+    }
+    return { ok: true, value: (await findClient(id))! };
   },
 
-  async updateDossierStatus(id, status) {
-    const [result] = await (await db()).execute<mysql.ResultSetHeader>(
-      "UPDATE bos_opco_dossiers SET status = ?, updated_at = ? WHERE id = ?",
-      [status, toSqlDateTime(new Date().toISOString()), id],
-    );
-    if (!result.affectedRows) return null;
-    const rows = await select("SELECT * FROM bos_opco_dossiers WHERE id = ?", toDossier, [id]);
-    return rows[0] ?? null;
+  createMission(input) {
+    return transaction(async (conn) => {
+      if (!(await findClient(input.clientId, conn))) return failure("Client introuvable", 404);
+      const id = `mis-${randomUUID()}`;
+      const code = await nextSerial(conn, "bos_missions", "code", "MIS", new Date().getUTCFullYear());
+      await conn.execute(
+        `INSERT INTO bos_missions
+           (id, code, titre, client_id, type, statut, montant_ht, debut, fin, notes, cree_le)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          code,
+          input.titre,
+          input.clientId,
+          input.type,
+          input.statut,
+          input.montantHT,
+          nul(input.debut),
+          nul(input.fin),
+          nul(input.notes),
+          nowSql(),
+        ],
+      );
+      await touchClient(conn, input.clientId);
+      return { ok: true as const, value: (await findMission(id, conn))! };
+    });
   },
 
-  async updateInvoiceStatus(id, status) {
-    const [result] = await (await db()).execute<mysql.ResultSetHeader>(
-      "UPDATE bos_invoices SET status = ? WHERE id = ?",
-      [status, id],
-    );
-    if (!result.affectedRows) return null;
-    const rows = await select("SELECT * FROM bos_invoices WHERE id = ?", toInvoice, [id]);
-    return rows[0] ?? null;
+  updateMission(id, patch) {
+    return transaction(async (conn) => {
+      const current = (await select("SELECT * FROM bos_missions WHERE id = ? FOR UPDATE", toMission, [id], conn))[0];
+      if (!current) return failure("Mission introuvable", 404);
+      const column: Record<string, string> = { montantHT: "montant_ht" };
+      const entries = Object.entries(patch).filter(([, v]) => v !== undefined);
+      const next = { ...current, ...Object.fromEntries(entries.map(([k, v]) => [k, v === "" ? undefined : v])) };
+      if (next.debut && next.fin && next.fin < next.debut) return failure("La fin prévue précède le début");
+      if (entries.length) {
+        await conn.execute(
+          `UPDATE bos_missions SET ${entries.map(([k]) => `${column[k] ?? k} = ?`).join(", ")} WHERE id = ?`,
+          [...entries.map(([, v]) => (v === "" ? null : (v as string | number))), id],
+        );
+      }
+      await touchClient(conn, current.clientId);
+      return { ok: true as const, value: (await findMission(id, conn))! };
+    });
+  },
+
+  createInvoice(input) {
+    return transaction(async (conn) => {
+      if (!(await findClient(input.clientId, conn))) return failure("Client introuvable", 404);
+      if (input.missionId && !missionBelongs(await findMission(input.missionId, conn), input.clientId)) {
+        return failure("Cette mission n'appartient pas à ce client");
+      }
+      const id = `inv-${randomUUID()}`;
+      const numero =
+        input.numero ?? (await nextSerial(conn, "bos_factures", "numero", "FA", Number(input.emiseLe.slice(0, 4))));
+      try {
+        await conn.execute(
+          `INSERT INTO bos_factures
+             (id, numero, client_id, mission_id, objet, montant_ht, taux_tva, statut, emise_le, echeance, recurrence)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            id,
+            numero,
+            input.clientId,
+            input.missionId ?? null,
+            input.objet ?? null,
+            input.montantHT,
+            input.tauxTva,
+            input.status,
+            input.emiseLe,
+            input.echeance,
+            input.recurrence ?? null,
+          ],
+        );
+      } catch (error) {
+        if (isDuplicate(error)) return failure(`La facture ${numero} existe déjà`, 409);
+        throw error;
+      }
+      await touchClient(conn, input.clientId);
+      return { ok: true as const, value: (await findInvoice(id, conn))!.invoice };
+    });
+  },
+
+  updateInvoiceStatus(id, status) {
+    return transaction(async (conn) => {
+      const found = await findInvoice(id, conn, true);
+      if (!found) return failure("Facture introuvable", 404);
+      if (found.record.status === "payee") return failure("Facture déjà payée : statut verrouillé", 409);
+      if (status === "payee" || status === "partiellement_payee") {
+        return failure("Enregistrez un paiement : le statut « payée » en découle", 400);
+      }
+      await conn.execute("UPDATE bos_factures SET statut = ? WHERE id = ?", [status, id]);
+      return { ok: true as const, value: (await findInvoice(id, conn))!.invoice };
+    });
+  },
+
+  recordPayment(input) {
+    return transaction(async (conn) => {
+      // Facture verrouillée : deux paiements simultanés ne dépassent pas le reste dû.
+      const found = await findInvoice(input.factureId, conn, true);
+      if (!found) return failure("Facture introuvable", 404);
+      const problem = paymentProblem(found.invoice, input.montant);
+      if (problem) return failure(problem, 409);
+      const payment: Payment = {
+        id: `pay-${randomUUID()}`,
+        numero: await nextSerial(conn, "bos_paiements", "numero", "REG", Number(input.date.slice(0, 4))),
+        factureId: input.factureId,
+        montant: round2(input.montant),
+        date: input.date,
+        mode: input.mode,
+        reference: input.reference,
+        creeLe: new Date().toISOString(),
+      };
+      await conn.execute(
+        `INSERT INTO bos_paiements (id, numero, facture_id, montant, date_paiement, mode, reference, cree_le)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          payment.id,
+          payment.numero,
+          payment.factureId,
+          payment.montant,
+          payment.date,
+          payment.mode,
+          payment.reference ?? null,
+          toSqlDateTime(payment.creeLe),
+        ],
+      );
+      const last = [...found.payments.map((p) => p.date), payment.date].sort().at(-1)!;
+      const settled = settleInvoice(
+        found.record.status,
+        found.invoice.montantTTC,
+        found.invoice.montantPaye + payment.montant,
+        last,
+      );
+      await conn.execute("UPDATE bos_factures SET statut = ?, payee_le = COALESCE(?, payee_le) WHERE id = ?", [
+        settled.status,
+        settled.payeeLe ?? null,
+        input.factureId,
+      ]);
+      await touchClient(conn, found.record.clientId);
+      return { ok: true as const, value: { payment, invoice: (await findInvoice(input.factureId, conn))!.invoice } };
+    });
   },
 
   async findOperationTarget(op) {
-    if (op.type === "statut_apprenant") {
-      const l = await findLearner(op.refId);
-      return l ? { libelle: `${l.prenom} ${l.nom}`, actuel: statusLabel(l.status) } : null;
+    if (op.type === "statut_client") {
+      const c = await findClient(op.refId);
+      return c ? { libelle: c.nom, actuel: statusLabel(c.statut) } : null;
     }
-    if (op.type === "statut_dossier") {
-      const d = (await select("SELECT * FROM bos_opco_dossiers WHERE id = ?", toDossier, [op.refId]))[0];
-      return d ? { libelle: `Dossier ${d.reference} (${d.organisme})`, actuel: statusLabel(d.status) } : null;
+    if (op.type === "statut_mission") {
+      const m = await findMission(op.refId);
+      return m ? { libelle: `Mission ${m.code} (${m.titre})`, actuel: statusLabel(m.statut) } : null;
     }
-    const i = (await select("SELECT * FROM bos_invoices WHERE id = ?", toInvoice, [op.refId]))[0];
+    const i = (await findInvoice(op.refId))?.invoice;
     return i ? { libelle: `Facture ${i.numero} (${i.client})`, actuel: statusLabel(i.status) } : null;
-  },
-
-  async markInvoicePaid(id, payeeLe) {
-    const [result] = await (await db()).execute<mysql.ResultSetHeader>(
-      "UPDATE bos_invoices SET status = 'payee', payee_le = ? WHERE id = ?",
-      [payeeLe, id],
-    );
-    if (!result.affectedRows) return null;
-    const rows = await select("SELECT * FROM bos_invoices WHERE id = ?", toInvoice, [id]);
-    return rows[0] ?? null;
-  },
-
-  async completeOpcoDossier(id) {
-    const pool = await db();
-    const [result] = await pool.execute<mysql.ResultSetHeader>(
-      `UPDATE bos_opco_dossiers SET completude = 100, pieces_manquantes = '[]',
-         status = 'transmis', updated_at = ? WHERE id = ?`,
-      [toSqlDateTime(new Date().toISOString()), id],
-    );
-    if (!result.affectedRows) return null;
-    const rows = await select("SELECT * FROM bos_opco_dossiers WHERE id = ?", toDossier, [id]);
-    return rows[0] ?? null;
   },
 
   resolveHitl(actionId, decision, edits, decidePar) {
@@ -694,13 +821,11 @@ export const mysqlRepository: Repository = {
   },
 
   async findRecipient(draft) {
-    if (draft.cible === "apprenant") {
-      const rows = await select("SELECT * FROM bos_learners WHERE id = ?", toLearner, [draft.refId]);
-      const l = rows[0];
-      return l ? { nom: `${l.prenom} ${l.nom}`, email: l.email || null } : null;
+    if (draft.cible === "client") {
+      const c = await findClient(draft.refId);
+      return c ? { nom: c.contact ? `${c.contact} (${c.nom})` : c.nom, email: c.email ?? null } : null;
     }
-    const rows = await select("SELECT * FROM bos_invoices WHERE id = ?", toInvoice, [draft.refId]);
-    const i = rows[0];
+    const i = (await findInvoice(draft.refId))?.invoice;
     return i ? { nom: i.client, email: i.emailClient ?? null } : null;
   },
 
@@ -889,78 +1014,5 @@ export const mysqlRepository: Repository = {
     } finally {
       conn.release();
     }
-  },
-
-  emitProofToCash(learnerId) {
-    return transaction(async (conn) => {
-      const learner = await findLearner(learnerId, conn);
-      if (!learner || !learner.comprehensionValidee) {
-        return { ok: false as const, error: "Compréhension non validée" };
-      }
-      const now = new Date().toISOString();
-      await conn.execute(
-        "UPDATE bos_learners SET status = 'certifie', pipeline_stage = 'completion' WHERE id = ?",
-        [learnerId],
-      );
-
-      const dossiers = await select(
-        "SELECT * FROM bos_opco_dossiers WHERE apprenant_id = ? LIMIT 1 FOR UPDATE",
-        toDossier,
-        [learnerId],
-        conn,
-      );
-      let dossier: OpcoDossier | undefined = dossiers[0];
-      if (dossier) {
-        await conn.execute(
-          `UPDATE bos_opco_dossiers SET completude = 100, pieces_manquantes = '[]',
-             status = 'accepte', updated_at = ? WHERE id = ?`,
-          [toSqlDateTime(now), dossier.id],
-        );
-        dossier = {
-          ...dossier,
-          completude: 100,
-          piecesManquantes: [],
-          status: "accepte",
-          updatedAt: now,
-        };
-      }
-
-      const montant = dossier?.montant ?? 0;
-      const invoice: Invoice = {
-        id: `inv-${randomUUID()}`,
-        numero: await nextInvoiceNumber(conn),
-        client: learner.entreprise ?? `${learner.prenom} ${learner.nom}`,
-        dossierOpcoId: dossier?.id,
-        montantHT: montant,
-        acomptePct: 30,
-        status: "brouillon",
-        emiseLe: now.slice(0, 10),
-        echeance: addDays(30),
-        joursRetard: 0,
-      };
-      await conn.execute(
-        `INSERT INTO bos_invoices
-           (id, numero, client, dossier_opco_id, montant_ht, acompte_pct, status, emise_le, echeance)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          invoice.id,
-          invoice.numero,
-          invoice.client,
-          invoice.dossierOpcoId ?? null,
-          invoice.montantHT,
-          invoice.acomptePct,
-          invoice.status,
-          invoice.emiseLe,
-          invoice.echeance,
-        ],
-      );
-
-      return {
-        ok: true as const,
-        completion_record: { learnerId, validatedAt: now, score: learner.scoreQuiz },
-        dossier,
-        invoice,
-      };
-    });
   },
 };

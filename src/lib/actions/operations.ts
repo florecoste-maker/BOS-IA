@@ -1,28 +1,28 @@
 /**
  * Changements de statut qu'un agent peut proposer et qui s'appliquent après
- * validation humaine. Liste fermée : ce qui engage de l'argent ou une
- * certification (payée, certifié, dossier payé) reste un geste humain.
+ * validation humaine. Liste fermée : ce qui engage l'agence ou de l'argent
+ * (mission signée ou annulée, facture payée ou annulée) reste un geste humain.
  */
-import type { InvoiceStatus, LearnerStatus, OperationType, OpcoStatus } from "@/lib/types";
+import type { ClientStatus, InvoiceStatus, MissionStatus, OperationType } from "@/lib/types";
 
 export const OPERATIONS: Record<
   OperationType,
   { libelle: string; cible: string; valeurs: readonly string[] }
 > = {
-  statut_apprenant: {
-    libelle: "Statut de l'apprenant",
-    cible: "apprenant",
-    valeurs: ["lead", "inscrit", "en_formation", "inactif", "abandon"] satisfies LearnerStatus[],
+  statut_client: {
+    libelle: "Statut du client",
+    cible: "client",
+    valeurs: ["prospect", "actif", "inactif", "perdu"] satisfies ClientStatus[],
   },
-  statut_dossier: {
-    libelle: "Statut du dossier OPCO",
-    cible: "dossier OPCO",
-    valeurs: ["brouillon", "completude", "transmis", "accepte", "refuse"] satisfies OpcoStatus[],
+  statut_mission: {
+    libelle: "Statut de la mission",
+    cible: "mission",
+    valeurs: ["en_cours", "livree", "terminee"] satisfies MissionStatus[],
   },
   statut_facture: {
     libelle: "Statut de la facture",
     cible: "facture",
-    valeurs: ["emise", "acompte_paye", "solde_du", "relance", "impayee"] satisfies InvoiceStatus[],
+    valeurs: ["emise", "relance", "impayee"] satisfies InvoiceStatus[],
   },
 };
 

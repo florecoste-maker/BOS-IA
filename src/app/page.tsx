@@ -37,7 +37,7 @@ export default function HomePage() {
           <a href={brand.siteUrl} className="font-semibold text-brand hover:text-brand-deep">
             jamaliance.com
           </a>
-          . Ici : cockpit formation, finance, agents et connexions.
+          . Ici : clients, missions, factures, paiements, agents IA et connexions.
         </p>
 
         <div className="mt-8 flex flex-wrap gap-3">

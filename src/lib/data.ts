@@ -6,17 +6,27 @@
 import { isDatabaseConfigured } from "./db/config";
 import { store } from "./store";
 import type {
+  ClientInput,
+  ClientPatch,
+  InvoiceInput,
+  MissionInput,
+  MissionPatch,
+  PaymentInput,
+  WriteResult,
+} from "./business";
+import type {
   ActionExecution,
   Agent,
   AgentAction,
   AgentRunLog,
+  Client,
   DashboardMetrics,
   EmailDraft,
   Invoice,
-  Learner,
-  OpcoDossier,
+  InvoiceStatus,
+  Mission,
+  Payment,
   StatusOperation,
-  TrainingSession,
   User,
   AuditEntry,
 } from "./types";
@@ -68,29 +78,26 @@ export interface AgentRunRecord {
   actions: AgentAction[];
 }
 
-export type ProofToCashResult =
-  | { ok: false; error: string }
-  | {
-      ok: true;
-      completion_record: { learnerId: string; validatedAt: string; score?: number };
-      dossier?: OpcoDossier;
-      invoice: Invoice;
-    };
-
 export interface Repository {
   mode: DataMode;
-  getSessions(): Promise<TrainingSession[]>;
-  getLearners(): Promise<Learner[]>;
-  getOpcoDossiers(): Promise<OpcoDossier[]>;
+  getClients(): Promise<Client[]>;
+  getMissions(): Promise<Mission[]>;
   getInvoices(): Promise<Invoice[]>;
+  getPayments(): Promise<Payment[]>;
   getAgents(): Promise<Agent[]>;
   getAgentActions(): Promise<AgentAction[]>;
   getMetrics(): Promise<DashboardMetrics>;
-  updateLearnerStatus(id: string, status: Learner["status"]): Promise<Learner | null>;
-  validateComprehension(id: string, score: number): Promise<Learner | null>;
-  completeOpcoDossier(id: string): Promise<OpcoDossier | null>;
-  /** Paiement reçu à la date donnée (AAAA-MM-JJ). */
-  markInvoicePaid(id: string, payeeLe: string): Promise<Invoice | null>;
+  /* Clients, missions, factures et paiements (saisis dans le cockpit) */
+  createClient(input: ClientInput): Promise<WriteResult<Client>>;
+  updateClient(id: string, patch: ClientPatch): Promise<WriteResult<Client>>;
+  createMission(input: MissionInput): Promise<WriteResult<Mission>>;
+  updateMission(id: string, patch: MissionPatch): Promise<WriteResult<Mission>>;
+  /** Numéro FA-AAAA-NNNN attribué si absent. */
+  createInvoice(input: InvoiceInput): Promise<WriteResult<Invoice>>;
+  /** Statut choisi à la main ou par un agent ; « payée » découle des paiements. */
+  updateInvoiceStatus(id: string, status: InvoiceStatus): Promise<WriteResult<Invoice>>;
+  /** Paiement reçu : la facture passe en « partiellement payée » ou « payée ». */
+  recordPayment(input: PaymentInput): Promise<WriteResult<{ payment: Payment; invoice: Invoice }>>;
   /** Décision humaine sur une action en attente (null si introuvable ou déjà tranchée). */
   resolveHitl(
     actionId: string,
@@ -98,8 +105,6 @@ export interface Repository {
     edits?: HitlEdits,
     decidePar?: string,
   ): Promise<AgentAction | null>;
-  updateDossierStatus(id: string, status: OpcoDossier["status"]): Promise<OpcoDossier | null>;
-  updateInvoiceStatus(id: string, status: Invoice["status"]): Promise<Invoice | null>;
   /** Fiche visée par une opération et son statut actuel (affichage), null si introuvable. */
   findOperationTarget(op: StatusOperation): Promise<{ libelle: string; actuel: string } | null>;
   /** Réserve l'exécution d'une action approuvée ; null si déjà en cours ou faite. */
@@ -112,7 +117,6 @@ export interface Repository {
     proposal: AgentProposalInput,
     model: string,
   ): Promise<AgentRunRecord | null>;
-  emitProofToCash(learnerId: string): Promise<ProofToCashResult>;
   /** Historique des exécutions d'agents, plus récentes d'abord. */
   logAgentRun(run: AgentRunLog): Promise<void>;
   getAgentRuns(limit?: number): Promise<AgentRunLog[]>;
@@ -142,19 +146,20 @@ const demoLocks = new Set<string>();
 
 const demoRepository: Repository = {
   mode: "demo",
-  getSessions: async () => store.getSessions(),
-  getLearners: async () => store.getLearners(),
-  getOpcoDossiers: async () => store.getOpcoDossiers(),
+  getClients: async () => store.getClients(),
+  getMissions: async () => store.getMissions(),
   getInvoices: async () => store.getInvoices(),
+  getPayments: async () => store.getPayments(),
   getAgents: async () => store.getAgents(),
   getAgentActions: async () => store.getAgentActions(),
   getMetrics: async () => store.getMetrics(),
-  updateLearnerStatus: async (id, status) => store.updateLearnerStatus(id, status),
-  validateComprehension: async (id, score) => store.validateComprehension(id, score),
-  completeOpcoDossier: async (id) => store.completeOpcoDossier(id),
-  markInvoicePaid: async (id, payeeLe) => store.markInvoicePaid(id, payeeLe),
-  updateDossierStatus: async (id, status) => store.updateDossierStatus(id, status),
+  createClient: async (input) => store.createClient(input),
+  updateClient: async (id, patch) => store.updateClient(id, patch),
+  createMission: async (input) => store.createMission(input),
+  updateMission: async (id, patch) => store.updateMission(id, patch),
+  createInvoice: async (input) => store.createInvoice(input),
   updateInvoiceStatus: async (id, status) => store.updateInvoiceStatus(id, status),
+  recordPayment: async (input) => store.recordPayment(input),
   findOperationTarget: async (op) => store.findOperationTarget(op),
   resolveHitl: async (actionId, decision, edits, decidePar) =>
     store.resolveHitl(actionId, decision, edits, decidePar),
@@ -163,7 +168,6 @@ const demoRepository: Repository = {
   findRecipient: async (draft) => store.findRecipient(draft),
   recordAgentRun: async (agentId, proposal, model) =>
     store.recordAgentRun(agentId, proposal, model),
-  emitProofToCash: async (learnerId) => store.emitProofToCash(learnerId),
   logAgentRun: async (run) => {
     demoRuns.unshift(run);
     demoRuns.splice(200);

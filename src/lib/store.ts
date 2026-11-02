@@ -1,17 +1,41 @@
+/**
+ * Données de démonstration en mémoire (sans base MySQL), réinitialisées à
+ * chaque redémarrage. Exemples fictifs d'une agence d'agents IA : aucune
+ * donnée réelle. Les écritures suivent les mêmes règles que MySQL (lib/business).
+ */
 import type {
   ActionExecution,
   Agent,
   AgentAction,
-  EmailDraft,
-  StatusOperation,
+  Client,
   DashboardMetrics,
+  EmailDraft,
   Invoice,
-  Learner,
-  OpcoDossier,
-  TrainingSession,
+  InvoiceStatus,
+  Mission,
+  Payment,
+  StatusOperation,
 } from "./types";
 import { editedOperation } from "./actions/operations";
 import { cleanEdits, isRetryable } from "./actions/rules";
+import {
+  type ClientInput,
+  type ClientPatch,
+  type InvoiceInput,
+  type InvoiceRecord,
+  type MissionInput,
+  type MissionPatch,
+  type PaymentInput,
+  type WriteResult,
+  deriveInvoice,
+  deriveInvoices,
+  failure,
+  missionBelongs,
+  nextNumber,
+  paymentProblem,
+  round2,
+  settleInvoice,
+} from "./business";
 import { statusLabel } from "./format";
 import { computeMetrics as computeMetricsFrom } from "./metrics";
 
@@ -21,288 +45,283 @@ function daysAgo(n: number): string {
   return d.toISOString();
 }
 
-function daysFromNow(n: number): string {
+function day(offset: number): string {
   const d = new Date();
-  d.setDate(d.getDate() + n);
+  d.setDate(d.getDate() + offset);
   return d.toISOString().slice(0, 10);
 }
 
-const sessions: TrainingSession[] = [
+const clients: Client[] = [
   {
-    id: "ses-001",
-    titre: "Google Workspace — Prise en main",
-    code: "GWS-INIT-7H",
-    debut: daysFromNow(-14),
-    fin: daysFromNow(-7),
-    formateur: "A. Moreau",
-    places: 12,
-    inscrits: 11,
-    statut: "terminee",
-    qualiopiIndicateurs: ["I4", "I11", "I12", "I13"],
-  },
-  {
-    id: "ses-002",
-    titre: "Gemini Enterprise — Agents métier",
-    code: "GEM-AGT-14H",
-    debut: daysFromNow(-3),
-    fin: daysFromNow(4),
-    formateur: "L. Ramanantsoa",
-    places: 10,
-    inscrits: 8,
-    statut: "en_cours",
-    qualiopiIndicateurs: ["I4", "I6", "I11", "I26"],
-  },
-  {
-    id: "ses-003",
-    titre: "Sécurité & Souveraineté Cloud",
-    code: "SEC-SOUV-7H",
-    debut: daysFromNow(10),
-    fin: daysFromNow(11),
-    formateur: "J. Santolaria",
-    places: 15,
-    inscrits: 4,
-    statut: "planifiee",
-    qualiopiIndicateurs: ["I4", "I11"],
-  },
-];
-
-const learners: Learner[] = [
-  {
-    id: "lrn-001",
-    nom: "Dupont",
-    prenom: "Camille",
-    email: "camille.dupont@atelier-nord.fr",
-    entreprise: "Atelier Nord",
-    status: "certifie",
-    pipelineStage: "completion",
-    sessionId: "ses-001",
+    id: "cli-001",
+    nom: "Atelier Nord",
+    contact: "Camille Dupont",
+    email: "camille.dupont@atelier-nord.example",
+    telephone: "01 23 45 67 89",
+    secteur: "Artisanat — menuiserie",
+    statut: "actif",
+    source: "Recommandation",
+    notes: "Agent IA de réponse aux demandes de devis.",
+    creeLe: daysAgo(60),
     derniereActivite: daysAgo(2),
-    comprehensionValidee: true,
-    scoreQuiz: 92,
-    createdAt: daysAgo(30),
   },
   {
-    id: "lrn-002",
-    nom: "Benali",
-    prenom: "Yasmine",
-    email: "y.benali@ocean-services.re",
-    entreprise: "Océan Services",
-    status: "en_formation",
-    pipelineStage: "parcours",
-    sessionId: "ses-002",
-    derniereActivite: daysAgo(0),
-    comprehensionValidee: false,
-    createdAt: daysAgo(10),
+    id: "cli-002",
+    nom: "Océan Services",
+    contact: "Yasmine Benali",
+    email: "y.benali@ocean-services.example",
+    secteur: "Services aux entreprises",
+    statut: "actif",
+    source: "Site jamaliance.com",
+    creeLe: daysAgo(35),
+    derniereActivite: daysAgo(1),
   },
   {
-    id: "lrn-003",
-    nom: "Martin",
-    prenom: "Hugo",
-    email: "h.martin@startup.io",
-    entreprise: "Startup.io",
-    status: "inactif",
-    pipelineStage: "parcours",
-    sessionId: "ses-002",
+    id: "cli-003",
+    nom: "Groupe Pacifique",
+    contact: "Mialy Rakoto",
+    email: "compta@groupe-pacifique.example",
+    secteur: "Distribution",
+    statut: "actif",
+    source: "Salon",
+    creeLe: daysAgo(80),
+    derniereActivite: daysAgo(12),
+  },
+  {
+    id: "cli-004",
+    nom: "TechBridge",
+    contact: "Li Chen",
+    email: "li.chen@techbridge.example",
+    secteur: "Logiciel",
+    statut: "prospect",
+    source: "Rendez-vous TidyCal",
+    notes: "Intéressé par un agent de qualification des leads.",
+    creeLe: daysAgo(9),
     derniereActivite: daysAgo(9),
-    comprehensionValidee: false,
-    createdAt: daysAgo(12),
   },
   {
-    id: "lrn-004",
-    nom: "Rakoto",
-    prenom: "Mialy",
-    email: "m.rakoto@groupe-pacifique.mg",
-    entreprise: "Groupe Pacifique",
-    status: "en_formation",
-    pipelineStage: "evaluation",
-    sessionId: "ses-002",
-    derniereActivite: daysAgo(1),
-    comprehensionValidee: true,
-    scoreQuiz: 78,
-    createdAt: daysAgo(8),
-  },
-  {
-    id: "lrn-005",
-    nom: "Lefèvre",
-    prenom: "Nora",
-    email: "nora.lefevre@mairie-exemple.fr",
-    entreprise: "Collectivité",
-    status: "inscrit",
-    pipelineStage: "inscription",
-    sessionId: "ses-003",
+    id: "cli-005",
+    nom: "Cabinet Lefèvre",
+    contact: "Nora Lefèvre",
+    secteur: "Expertise comptable",
+    statut: "prospect",
+    source: "LinkedIn",
+    creeLe: daysAgo(3),
     derniereActivite: daysAgo(3),
-    comprehensionValidee: false,
-    createdAt: daysAgo(5),
-  },
-  {
-    id: "lrn-006",
-    nom: "Chen",
-    prenom: "Li",
-    email: "li.chen@techbridge.be",
-    entreprise: "TechBridge",
-    status: "lead",
-    pipelineStage: "lead",
-    derniereActivite: daysAgo(1),
-    comprehensionValidee: false,
-    createdAt: daysAgo(1),
   },
 ];
 
-const opcoDossiers: OpcoDossier[] = [
+const missions: Mission[] = [
   {
-    id: "opco-001",
-    reference: "OPCO-2026-0842",
-    organisme: "OPCO EP",
-    apprenantId: "lrn-001",
-    sessionId: "ses-001",
-    montant: 1490,
-    status: "paye",
-    completude: 100,
-    piecesManquantes: [],
-    updatedAt: daysAgo(5),
+    id: "mis-001",
+    code: "MIS-2026-0001",
+    titre: "Agent IA — réponses aux demandes de devis",
+    clientId: "cli-001",
+    type: "agent_ia",
+    statut: "livree",
+    montantHT: 4800,
+    debut: day(-50),
+    fin: day(-10),
+    creeLe: daysAgo(55),
   },
   {
-    id: "opco-002",
-    reference: "OPCO-2026-0911",
-    organisme: "AKTO",
-    apprenantId: "lrn-002",
-    sessionId: "ses-002",
-    montant: 2490,
-    status: "completude",
-    completude: 72,
-    piecesManquantes: ["Attestation employeur", "Programme signé"],
-    updatedAt: daysAgo(1),
+    id: "mis-002",
+    code: "MIS-2026-0002",
+    titre: "Automatisation du tri des e-mails entrants",
+    clientId: "cli-002",
+    type: "automatisation",
+    statut: "en_cours",
+    montantHT: 3200,
+    debut: day(-14),
+    fin: day(5),
+    creeLe: daysAgo(30),
   },
   {
-    id: "opco-003",
-    reference: "OPCO-2026-0933",
-    organisme: "OPCO Mobilités",
-    apprenantId: "lrn-004",
-    sessionId: "ses-002",
-    montant: 2490,
-    status: "transmis",
-    completude: 100,
-    piecesManquantes: [],
-    updatedAt: daysAgo(0),
+    id: "mis-003",
+    code: "MIS-2026-0003",
+    titre: "Maintenance et suivi des agents IA",
+    clientId: "cli-001",
+    type: "abonnement",
+    statut: "en_cours",
+    montantHT: 150,
+    debut: day(-10),
+    creeLe: daysAgo(10),
+  },
+  {
+    id: "mis-004",
+    code: "MIS-2026-0004",
+    titre: "Audit des processus et feuille de route IA",
+    clientId: "cli-003",
+    type: "conseil",
+    statut: "terminee",
+    montantHT: 2500,
+    debut: day(-70),
+    fin: day(-45),
+    creeLe: daysAgo(75),
+  },
+  {
+    id: "mis-005",
+    code: "MIS-2026-0005",
+    titre: "Agent de qualification des leads",
+    clientId: "cli-004",
+    type: "agent_ia",
+    statut: "proposition",
+    montantHT: 5400,
+    creeLe: daysAgo(5),
   },
 ];
 
-const invoices: Invoice[] = [
+const invoices: InvoiceRecord[] = [
   {
     id: "inv-001",
-    numero: "FA-2026-0142",
-    client: "Atelier Nord",
-    dossierOpcoId: "opco-001",
-    montantHT: 1490,
-    acomptePct: 30,
+    numero: "FA-2026-0001",
+    clientId: "cli-001",
+    missionId: "mis-001",
+    objet: "Agent IA devis — acompte 30 %",
+    montantHT: 1440,
+    tauxTva: 20,
     status: "payee",
-    emiseLe: daysAgo(20).slice(0, 10),
-    echeance: daysAgo(5).slice(0, 10),
-    joursRetard: 0,
-    payeeLe: daysAgo(4).slice(0, 10),
+    emiseLe: day(-50),
+    echeance: day(-35),
+    payeeLe: day(-44),
   },
   {
     id: "inv-002",
-    numero: "FA-2026-0158",
-    client: "Océan Services",
-    dossierOpcoId: "opco-002",
-    montantHT: 2490,
-    acomptePct: 30,
-    status: "acompte_paye",
-    emiseLe: daysAgo(8).slice(0, 10),
-    echeance: daysFromNow(22),
-    joursRetard: 0,
+    numero: "FA-2026-0002",
+    clientId: "cli-001",
+    missionId: "mis-001",
+    objet: "Agent IA devis — solde à la livraison",
+    montantHT: 3360,
+    tauxTva: 20,
+    status: "partiellement_payee",
+    emiseLe: day(-10),
+    echeance: day(20),
   },
   {
     id: "inv-003",
-    numero: "FA-2026-0161",
-    client: "Groupe Pacifique",
-    dossierOpcoId: "opco-003",
-    montantHT: 2490,
-    acomptePct: 30,
+    numero: "FA-2026-0003",
+    clientId: "cli-003",
+    missionId: "mis-004",
+    objet: "Audit des processus IA",
+    montantHT: 2500,
+    tauxTva: 20,
     status: "relance",
-    emiseLe: daysAgo(40).slice(0, 10),
-    echeance: daysAgo(10).slice(0, 10),
-    joursRetard: 10,
+    emiseLe: day(-45),
+    echeance: day(-15),
   },
   {
     id: "inv-004",
-    numero: "ABO-2026-0044",
-    client: "TechBridge",
+    numero: "FA-2026-0004",
+    clientId: "cli-001",
+    missionId: "mis-003",
+    objet: "Maintenance des agents IA — mois en cours",
     montantHT: 150,
-    acomptePct: 100,
+    tauxTva: 20,
     status: "emise",
-    emiseLe: daysAgo(2).slice(0, 10),
-    echeance: daysFromNow(28),
-    joursRetard: 0,
+    emiseLe: day(-2),
+    echeance: day(28),
     recurrence: "mensuel",
+  },
+  {
+    id: "inv-005",
+    numero: "FA-2026-0005",
+    clientId: "cli-002",
+    missionId: "mis-002",
+    objet: "Automatisation e-mails — acompte 40 %",
+    montantHT: 1280,
+    tauxTva: 20,
+    status: "emise",
+    emiseLe: day(-14),
+    echeance: day(-1),
+  },
+];
+
+const payments: Payment[] = [
+  {
+    id: "pay-001",
+    numero: "REG-2026-0001",
+    factureId: "inv-001",
+    montant: 1728,
+    date: day(-44),
+    mode: "virement",
+    reference: "VIR ATELIER NORD",
+    creeLe: daysAgo(44),
+  },
+  {
+    id: "pay-002",
+    numero: "REG-2026-0002",
+    factureId: "inv-002",
+    montant: 2000,
+    date: day(-3),
+    mode: "virement",
+    creeLe: daysAgo(3),
   },
 ];
 
 const agents: Agent[] = [
   {
     id: "agt-001",
-    nom: "Data Truth Keeper",
-    role: "Gardien des prix et référentiels",
-    tier: "QAA",
-    autonomy: "quality_assured",
+    nom: "Suivi commercial",
+    role: "Relance des prospects et des clients sans nouvelles",
+    tier: "IPOA",
+    autonomy: "informed_proactive",
     status: "actif",
-    derniereAction: "Synchronisation grille tarifaire GWS-INIT",
+    derniereAction: "Prospect TechBridge sans réponse depuis 9 jours",
+    risque: "moyen",
+    hitlObligatoire: true,
+  },
+  {
+    id: "agt-002",
+    nom: "Suivi des missions",
+    role: "Échéances, livraisons et avancement des missions",
+    tier: "IPOA",
+    autonomy: "informed_proactive",
+    status: "actif",
+    derniereAction: "Livraison de l'automatisation Océan Services dans 5 jours",
     risque: "faible",
     hitlObligatoire: false,
   },
   {
-    id: "agt-002",
-    nom: "Compliance Guardian",
-    role: "Auditeur RGPD temps réel",
-    tier: "QAA",
-    autonomy: "quality_assured",
-    status: "actif",
-    derniereAction: "Scan PII sur exports apprenants",
-    risque: "moyen",
-    hitlObligatoire: false,
-  },
-  {
     id: "agt-003",
-    nom: "Veille Qualiopi",
-    role: "Scan automatique des normes",
-    tier: "IPOA",
-    autonomy: "informed_proactive",
-    status: "actif",
-    derniereAction: "Alerte indicateur I26 — preuves manquantes ses-002",
-    risque: "moyen",
-    hitlObligatoire: false,
+    nom: "Recouvrement assisté",
+    role: "Relances adaptatives des factures échues",
+    tier: "MDGA",
+    autonomy: "monitored_delegated",
+    status: "en_attente_hitl",
+    derniereAction: "Proposition de relance FA-2026-0003 (15 j de retard)",
+    risque: "eleve",
+    hitlObligatoire: true,
   },
   {
     id: "agt-004",
-    nom: "Optimiseur Pipeline",
-    role: "Amélioration continue des parcours",
-    tier: "IPOA",
-    autonomy: "informed_proactive",
+    nom: "Pilotage financier",
+    role: "Trésorerie, encaissements et abonnements",
+    tier: "QAA",
+    autonomy: "quality_assured",
     status: "actif",
-    derniereAction: "Suggestion relance ghost learner Hugo Martin",
+    derniereAction: "Reste à encaisser et abonnements vérifiés",
     risque: "faible",
     hitlObligatoire: false,
   },
   {
     id: "agt-005",
-    nom: "Recouvrement Assisté",
-    role: "Relances adaptatives factures",
-    tier: "MDGA",
-    autonomy: "monitored_delegated",
-    status: "en_attente_hitl",
-    derniereAction: "Proposition relance FA-2026-0161 (J+10)",
-    risque: "eleve",
-    hitlObligatoire: true,
+    nom: "Conformité RGPD",
+    role: "Données clients minimales et durées de conservation",
+    tier: "QAA",
+    autonomy: "quality_assured",
+    status: "actif",
+    derniereAction: "Aucune donnée superflue détectée",
+    risque: "moyen",
+    hitlObligatoire: false,
   },
   {
     id: "agt-006",
-    nom: "Assistant BPO Workspace",
-    role: "Assistants Gmail / Sheets",
+    nom: "Assistant e-mails",
+    role: "Rédaction des e-mails aux clients (suivi, confirmations, réponses)",
     tier: "FCA",
     autonomy: "monitored_delegated",
     status: "actif",
-    derniereAction: "Draft confirmation inscription Lefèvre",
+    derniereAction: "Brouillon de confirmation de démarrage pour Océan Services",
     risque: "moyen",
     hitlObligatoire: true,
   },
@@ -311,117 +330,216 @@ const agents: Agent[] = [
 const agentActions: AgentAction[] = [
   {
     id: "act-001",
-    agentId: "agt-005",
+    agentId: "agt-003",
     type: "relance_facture",
-    description:
-      "Envoyer une relance courtoise à Groupe Pacifique pour FA-2026-0161 (10 j. de retard).",
+    description: "Envoyer une relance courtoise à Groupe Pacifique pour FA-2026-0003 (15 j de retard).",
     timestamp: daysAgo(0),
     requiresHitl: true,
     hitlStatus: "pending",
   },
   {
     id: "act-002",
-    agentId: "agt-004",
-    type: "relance_ghost",
-    description:
-      "Hugo Martin inactif depuis 9 jours — proposer un message de reprise de parcours.",
+    agentId: "agt-001",
+    type: "relance_prospect",
+    description: "TechBridge n'a pas répondu à la proposition MIS-2026-0005 : proposer un échange de 20 minutes.",
     timestamp: daysAgo(0),
     requiresHitl: true,
     hitlStatus: "pending",
   },
   {
     id: "act-003",
-    agentId: "agt-002",
-    type: "audit_rgpd",
-    description: "Aucun export non chiffré détecté sur les 24 dernières heures.",
+    agentId: "agt-005",
+    type: "controle_rgpd",
+    description: "Fiches clients limitées aux coordonnées professionnelles : rien à corriger.",
     timestamp: daysAgo(0),
     requiresHitl: false,
   },
 ];
 
-function computeMetrics(): DashboardMetrics {
-  return computeMetricsFrom({ learners, opcoDossiers, invoices, agents, agentActions });
+const stamp = () => new Date().toISOString();
+const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+const optional = (v: string | undefined) => (v ? v : undefined);
+
+function currentInvoices(): Invoice[] {
+  return deriveInvoices(invoices, clients, payments);
 }
 
-/** System of Record in-memory (démo). Isolé par tenant conceptuel. */
+function invoiceById(invoiceId: string): Invoice | undefined {
+  const record = invoices.find((i) => i.id === invoiceId);
+  return record ? deriveInvoice(record, clients.find((c) => c.id === record.clientId), payments) : undefined;
+}
+
+function computeMetrics(): DashboardMetrics {
+  return computeMetricsFrom({
+    clients,
+    missions,
+    invoices: currentInvoices(),
+    payments,
+    agents,
+    agentActions,
+  });
+}
+
+function touchClient(clientId: string) {
+  const client = clients.find((c) => c.id === clientId);
+  if (client) client.derniereActivite = stamp();
+}
+
+/** Base de démonstration en mémoire. */
 export const store = {
-  getSessions: () => [...sessions],
-  getLearners: () => [...learners],
-  getLearner: (id: string) => learners.find((l) => l.id === id),
-  getOpcoDossiers: () => [...opcoDossiers],
-  getInvoices: () => [...invoices],
+  getClients: () => clients.map((c) => ({ ...c })),
+  getMissions: () => missions.map((m) => ({ ...m })),
+  getInvoices: currentInvoices,
+  getPayments: () => payments.map((p) => ({ ...p })),
   getAgents: () => [...agents],
   getAgentActions: () => [...agentActions],
   getMetrics: computeMetrics,
 
-  updateLearnerStatus(id: string, status: Learner["status"]) {
-    const learner = learners.find((l) => l.id === id);
-    if (!learner) return null;
-    learner.status = status;
-    learner.derniereActivite = new Date().toISOString();
-    if (status === "certifie") {
-      learner.pipelineStage = "completion";
-      learner.comprehensionValidee = true;
+  createClient(input: ClientInput): WriteResult<Client> {
+    if (clients.some((c) => c.nom.toLowerCase() === input.nom.toLowerCase())) {
+      return failure(`Un client « ${input.nom} » existe déjà`, 409);
     }
-    return { ...learner };
+    const client: Client = {
+      id: id("cli"),
+      nom: input.nom,
+      contact: optional(input.contact),
+      email: optional(input.email),
+      telephone: optional(input.telephone),
+      secteur: optional(input.secteur),
+      statut: input.statut,
+      source: optional(input.source),
+      notes: optional(input.notes),
+      creeLe: stamp(),
+      derniereActivite: stamp(),
+    };
+    clients.push(client);
+    return { ok: true, value: { ...client } };
   },
 
-  validateComprehension(id: string, score: number) {
-    const learner = learners.find((l) => l.id === id);
-    if (!learner) return null;
-    learner.comprehensionValidee = score >= 70;
-    learner.scoreQuiz = score;
-    learner.pipelineStage = score >= 70 ? "certification" : "evaluation";
-    learner.derniereActivite = new Date().toISOString();
-    return { ...learner };
+  updateClient(clientId: string, patch: ClientPatch): WriteResult<Client> {
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return failure("Client introuvable", 404);
+    if (patch.nom && clients.some((c) => c.id !== clientId && c.nom.toLowerCase() === patch.nom!.toLowerCase())) {
+      return failure(`Un client « ${patch.nom} » existe déjà`, 409);
+    }
+    for (const [key, value] of Object.entries(patch)) {
+      (client as unknown as Record<string, unknown>)[key] = key === "nom" || key === "statut" ? value : optional(value as string);
+    }
+    client.derniereActivite = stamp();
+    return { ok: true, value: { ...client } };
   },
 
-  updateDossierStatus(id: string, status: OpcoDossier["status"]) {
-    const dossier = opcoDossiers.find((d) => d.id === id);
-    if (!dossier) return null;
-    dossier.status = status;
-    dossier.updatedAt = new Date().toISOString();
-    return { ...dossier };
+  createMission(input: MissionInput): WriteResult<Mission> {
+    if (!clients.some((c) => c.id === input.clientId)) return failure("Client introuvable", 404);
+    const mission: Mission = {
+      id: id("mis"),
+      code: nextNumber("MIS", new Date().getUTCFullYear(), missions.map((m) => m.code)),
+      titre: input.titre,
+      clientId: input.clientId,
+      type: input.type,
+      statut: input.statut,
+      montantHT: input.montantHT,
+      debut: optional(input.debut),
+      fin: optional(input.fin),
+      notes: optional(input.notes),
+      creeLe: stamp(),
+    };
+    missions.push(mission);
+    touchClient(input.clientId);
+    return { ok: true, value: { ...mission } };
   },
 
-  updateInvoiceStatus(id: string, status: Invoice["status"]) {
-    const invoice = invoices.find((i) => i.id === id);
-    if (!invoice) return null;
-    invoice.status = status;
-    return { ...invoice };
+  updateMission(missionId: string, patch: MissionPatch): WriteResult<Mission> {
+    const mission = missions.find((m) => m.id === missionId);
+    if (!mission) return failure("Mission introuvable", 404);
+    const next = { ...mission };
+    for (const [key, value] of Object.entries(patch)) {
+      (next as unknown as Record<string, unknown>)[key] =
+        typeof value === "string" && ["debut", "fin", "notes"].includes(key) ? optional(value) : value;
+    }
+    if (next.debut && next.fin && next.fin < next.debut) return failure("La fin prévue précède le début");
+    Object.assign(mission, next);
+    touchClient(mission.clientId);
+    return { ok: true, value: { ...mission } };
+  },
+
+  createInvoice(input: InvoiceInput): WriteResult<Invoice> {
+    if (!clients.some((c) => c.id === input.clientId)) return failure("Client introuvable", 404);
+    if (input.missionId && !missionBelongs(missions.find((m) => m.id === input.missionId), input.clientId)) {
+      return failure("Cette mission n'appartient pas à ce client");
+    }
+    const numero =
+      input.numero ?? nextNumber("FA", Number(input.emiseLe.slice(0, 4)), invoices.map((i) => i.numero));
+    if (invoices.some((i) => i.numero.toLowerCase() === numero.toLowerCase())) {
+      return failure(`La facture ${numero} existe déjà`, 409);
+    }
+    const record: InvoiceRecord = {
+      id: id("inv"),
+      numero,
+      clientId: input.clientId,
+      missionId: input.missionId,
+      objet: input.objet,
+      montantHT: input.montantHT,
+      tauxTva: input.tauxTva,
+      status: input.status,
+      emiseLe: input.emiseLe,
+      echeance: input.echeance,
+      recurrence: input.recurrence,
+    };
+    invoices.push(record);
+    touchClient(input.clientId);
+    return { ok: true, value: invoiceById(record.id)! };
+  },
+
+  /** Changement de statut à la main ou par un agent ; une facture payée ne se rouvre pas. */
+  updateInvoiceStatus(invoiceId: string, status: InvoiceStatus): WriteResult<Invoice> {
+    const record = invoices.find((i) => i.id === invoiceId);
+    if (!record) return failure("Facture introuvable", 404);
+    if (record.status === "payee") return failure("Facture déjà payée : statut verrouillé", 409);
+    if (status === "payee" || status === "partiellement_payee") {
+      return failure("Enregistrez un paiement : le statut « payée » en découle", 400);
+    }
+    record.status = status;
+    return { ok: true, value: invoiceById(record.id)! };
+  },
+
+  recordPayment(input: PaymentInput): WriteResult<{ payment: Payment; invoice: Invoice }> {
+    const record = invoices.find((i) => i.id === input.factureId);
+    const invoice = record && invoiceById(record.id);
+    if (!record || !invoice) return failure("Facture introuvable", 404);
+    const problem = paymentProblem(invoice, input.montant);
+    if (problem) return failure(problem, 409);
+    const payment: Payment = {
+      id: id("pay"),
+      numero: nextNumber("REG", Number(input.date.slice(0, 4)), payments.map((p) => p.numero)),
+      factureId: record.id,
+      montant: round2(input.montant),
+      date: input.date,
+      mode: input.mode,
+      reference: optional(input.reference),
+      creeLe: stamp(),
+    };
+    payments.push(payment);
+    const paid = payments.filter((p) => p.factureId === record.id);
+    const last = paid.map((p) => p.date).sort().at(-1)!;
+    const settled = settleInvoice(record.status, invoice.montantTTC, invoice.montantPaye + payment.montant, last);
+    record.status = settled.status;
+    if (settled.payeeLe) record.payeeLe = settled.payeeLe;
+    touchClient(record.clientId);
+    return { ok: true, value: { payment: { ...payment }, invoice: invoiceById(record.id)! } };
   },
 
   findOperationTarget(op: StatusOperation) {
-    if (op.type === "statut_apprenant") {
-      const l = learners.find((x) => x.id === op.refId);
-      return l ? { libelle: `${l.prenom} ${l.nom}`, actuel: statusLabel(l.status) } : null;
+    if (op.type === "statut_client") {
+      const c = clients.find((x) => x.id === op.refId);
+      return c ? { libelle: c.nom, actuel: statusLabel(c.statut) } : null;
     }
-    if (op.type === "statut_dossier") {
-      const d = opcoDossiers.find((x) => x.id === op.refId);
-      return d ? { libelle: `Dossier ${d.reference} (${d.organisme})`, actuel: statusLabel(d.status) } : null;
+    if (op.type === "statut_mission") {
+      const m = missions.find((x) => x.id === op.refId);
+      return m ? { libelle: `Mission ${m.code} (${m.titre})`, actuel: statusLabel(m.statut) } : null;
     }
-    const i = invoices.find((x) => x.id === op.refId);
+    const i = invoiceById(op.refId);
     return i ? { libelle: `Facture ${i.numero} (${i.client})`, actuel: statusLabel(i.status) } : null;
-  },
-
-  /** Paiement reçu : statut « payée » et date de paiement (AAAA-MM-JJ). */
-  markInvoicePaid(id: string, payeeLe: string) {
-    const invoice = invoices.find((i) => i.id === id);
-    if (!invoice) return null;
-    invoice.status = "payee";
-    invoice.payeeLe = payeeLe;
-    invoice.joursRetard = 0;
-    return { ...invoice };
-  },
-
-  completeOpcoDossier(id: string) {
-    const dossier = opcoDossiers.find((d) => d.id === id);
-    if (!dossier) return null;
-    dossier.completude = 100;
-    dossier.piecesManquantes = [];
-    dossier.status = "transmis";
-    dossier.updatedAt = new Date().toISOString();
-    return { ...dossier };
   },
 
   /** Décision humaine, une seule fois : une action déjà tranchée est refusée (null). */
@@ -435,7 +553,7 @@ export const store = {
     if (!action || !action.requiresHitl || action.hitlStatus !== "pending") return null;
     action.hitlStatus = decision;
     action.decidePar = decidePar;
-    action.decideLe = new Date().toISOString();
+    action.decideLe = stamp();
     if (decision === "approved" && action.email) {
       action.email = { ...action.email, ...cleanEdits(edits) };
     }
@@ -446,9 +564,7 @@ export const store = {
     if (agent && agent.status === "en_attente_hitl") {
       agent.status = decision === "approved" ? "actif" : "pause";
       agent.derniereAction =
-        decision === "approved"
-          ? `HITL approuvé — ${action.type}`
-          : `HITL refusé — ${action.type}`;
+        decision === "approved" ? `HITL approuvé — ${action.type}` : `HITL refusé — ${action.type}`;
     }
     return { ...action };
   },
@@ -458,7 +574,7 @@ export const store = {
     const action = agentActions.find((a) => a.id === actionId);
     if (!action || action.hitlStatus !== "approved") return null;
     if (action.execution && !isRetryable(action.execution)) return null;
-    action.execution = { statut: "en_cours", le: new Date().toISOString(), message: "" };
+    action.execution = { statut: "en_cours", le: stamp(), message: "" };
     return { ...action };
   },
 
@@ -468,11 +584,11 @@ export const store = {
   },
 
   findRecipient(draft: EmailDraft) {
-    if (draft.cible === "apprenant") {
-      const learner = learners.find((l) => l.id === draft.refId);
-      return learner ? { nom: `${learner.prenom} ${learner.nom}`, email: learner.email || null } : null;
+    if (draft.cible === "client") {
+      const client = clients.find((c) => c.id === draft.refId);
+      return client ? { nom: client.contact ? `${client.contact} (${client.nom})` : client.nom, email: client.email ?? null } : null;
     }
-    const invoice = invoices.find((i) => i.id === draft.refId);
+    const invoice = invoiceById(draft.refId);
     return invoice ? { nom: invoice.client, email: invoice.emailClient ?? null } : null;
   },
 
@@ -493,7 +609,7 @@ export const store = {
   ) {
     const agent = agents.find((a) => a.id === agentId);
     if (!agent) return null;
-    const timestamp = new Date().toISOString();
+    const timestamp = stamp();
     const created: AgentAction[] = proposal.actions.map((a, i) => ({
       id: `act-${Date.now()}-${i}`,
       agentId,
@@ -509,61 +625,5 @@ export const store = {
     agent.derniereAction = proposal.resume;
     if (created.some((a) => a.requiresHitl)) agent.status = "en_attente_hitl";
     return { agentId, model, resume: proposal.resume, actions: created };
-  },
-
-  emitProofToCash(learnerId: string) {
-    const learner = learners.find((l) => l.id === learnerId);
-    if (!learner || !learner.comprehensionValidee) {
-      return { ok: false as const, error: "Compréhension non validée" };
-    }
-    learner.status = "certifie";
-    learner.pipelineStage = "completion";
-
-    let dossier = opcoDossiers.find((d) => d.apprenantId === learnerId);
-    if (!dossier && learner.sessionId) {
-      dossier = {
-        id: `opco-${Date.now()}`,
-        reference: `OPCO-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-        organisme: "OPCO EP",
-        apprenantId: learnerId,
-        sessionId: learner.sessionId,
-        montant: 1490,
-        status: "completude",
-        completude: 100,
-        piecesManquantes: [],
-        updatedAt: new Date().toISOString(),
-      };
-      opcoDossiers.push(dossier);
-    } else if (dossier) {
-      dossier.completude = 100;
-      dossier.piecesManquantes = [];
-      dossier.status = "accepte";
-      dossier.updatedAt = new Date().toISOString();
-    }
-
-    const invoice: Invoice = {
-      id: `inv-${Date.now()}`,
-      numero: `FA-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-      client: learner.entreprise ?? `${learner.prenom} ${learner.nom}`,
-      dossierOpcoId: dossier?.id,
-      montantHT: dossier?.montant ?? 1490,
-      acomptePct: 30,
-      status: "emise",
-      emiseLe: new Date().toISOString().slice(0, 10),
-      echeance: daysFromNow(30),
-      joursRetard: 0,
-    };
-    invoices.push(invoice);
-
-    return {
-      ok: true as const,
-      completion_record: {
-        learnerId,
-        validatedAt: new Date().toISOString(),
-        score: learner.scoreQuiz,
-      },
-      dossier,
-      invoice,
-    };
   },
 };

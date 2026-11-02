@@ -5,7 +5,7 @@ import { getActor } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-/** Journal des actions (administrateurs). `?format=csv` pour l'archiver (Qualiopi, RGPD). */
+/** Journal des actions (administrateurs). `?format=csv` pour l'archiver (RGPD, comptabilité). */
 export async function GET(request: Request) {
   const actor = await getActor();
   if (actor?.role !== "admin") {

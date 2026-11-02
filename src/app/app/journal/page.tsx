@@ -26,7 +26,7 @@ export default async function JournalPage({ searchParams }: PageProps<"/app/jour
       <SectionTitle
         eyebrow="Administration"
         title="Journal des actions"
-        description="Qui a fait quoi, quand et d'où : connexions, décisions sur les propositions des agents, envois, imports, exports, paiements et gestion des comptes. Archivable en CSV (Qualiopi, RGPD)."
+        description="Qui a fait quoi, quand et d'où : connexions, fiches clients, missions, factures, paiements, décisions sur les propositions des agents, envois, imports, exports et gestion des comptes. Archivable en CSV (RGPD, comptabilité)."
       />
 
       <form className="mb-6 flex flex-wrap items-end gap-3 text-sm">

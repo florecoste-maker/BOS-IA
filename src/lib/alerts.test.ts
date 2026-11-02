@@ -64,7 +64,7 @@ describe("Alertes", () => {
     const mail = sink.mails[before];
     assert.deepEqual(mail.to, ["<direction@jamaliance.com>"]);
     const body = mail.data.replace(/=\r?\n/g, "");
-    assert.match(body, /Compliance Guardian/);
+    assert.match(body, /Suivi des missions/);
     assert.match(body, /proposition\(s\) attendent votre validation/);
     assert.match(body, /\/app\/agents/);
   });
@@ -83,9 +83,11 @@ describe("Alertes", () => {
     const before = sink.mails.length;
     const backup = await buildBackup(await getRepository());
     assert.equal(backup.format, "bos-ia-sauvegarde");
-    assert.equal(backup.totaux.apprenants, backup.donnees.apprenants.length);
+    assert.equal(backup.version, 2);
+    assert.equal(backup.totaux.clients, backup.donnees.clients.length);
+    assert.equal(backup.totaux.paiements, backup.donnees.paiements.length);
     const gz = gzipBackup(backup);
-    assert.equal(JSON.parse(gunzipSync(gz).toString("utf8")).totaux.sessions, backup.totaux.sessions);
+    assert.equal(JSON.parse(gunzipSync(gz).toString("utf8")).totaux.factures, backup.totaux.factures);
     assert.match(backupFileName(new Date("2026-10-27T03:00:00Z")), /2026-10-27\.json$/);
     await sendAlert("Sauvegarde", "ci-joint", [
       { filename: "s.json.gz", content: gz, contentType: "application/gzip" },

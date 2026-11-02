@@ -12,10 +12,10 @@ import { getMailConfig, isEmail, sendMail } from "@/lib/mail";
 import type {
   ActionExecution,
   AgentAction,
+  ClientStatus,
   EmailDraft,
   InvoiceStatus,
-  LearnerStatus,
-  OpcoStatus,
+  MissionStatus,
   StatusOperation,
 } from "@/lib/types";
 
@@ -64,12 +64,12 @@ async function applyOperation(repo: Repository, op: StatusOperation): Promise<Ac
   const target = await repo.findOperationTarget(op);
   if (!target) return result("echec", `Fiche introuvable (${OPERATIONS[op.type].cible} ${op.refId} supprimé ?)`);
   const done =
-    op.type === "statut_apprenant"
-      ? await repo.updateLearnerStatus(op.refId, op.valeur as LearnerStatus)
-      : op.type === "statut_dossier"
-        ? await repo.updateDossierStatus(op.refId, op.valeur as OpcoStatus)
+    op.type === "statut_client"
+      ? await repo.updateClient(op.refId, { statut: op.valeur as ClientStatus })
+      : op.type === "statut_mission"
+        ? await repo.updateMission(op.refId, { statut: op.valeur as MissionStatus })
         : await repo.updateInvoiceStatus(op.refId, op.valeur as InvoiceStatus);
-  if (!done) return result("echec", `Fiche introuvable (${OPERATIONS[op.type].cible} ${op.refId})`);
+  if (!done.ok) return result("echec", `${target.libelle} : ${done.error}`);
   return result("fait", `${target.libelle} : ${target.actuel} → ${statusLabel(op.valeur)}`);
 }
 
@@ -98,8 +98,8 @@ async function sendDraft(repo: Repository, draft: EmailDraft): Promise<ActionExe
     return result(
       "echec",
       draft.cible === "facture"
-        ? `Pas d'adresse e-mail pour le client ${recipient.nom} : ajoutez la colonne email_client à l'import des factures`
-        : `Adresse e-mail invalide pour ${recipient.nom}`,
+        ? `Pas d'adresse e-mail pour le client ${recipient.nom} : ajoutez-la sur sa fiche (Clients)`
+        : `Adresse e-mail absente ou invalide pour ${recipient.nom} : complétez sa fiche (Clients)`,
     );
   }
 

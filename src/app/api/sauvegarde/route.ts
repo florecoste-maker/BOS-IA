@@ -36,10 +36,10 @@ export async function POST(request: Request) {
     [
       "Sauvegarde hebdomadaire des données BOS-IA en pièce jointe (JSON compressé).",
       "",
-      `Sessions : ${t.sessions} · Apprenants : ${t.apprenants} · Dossiers OPCO : ${t.dossiersOpco} · Factures : ${t.factures}`,
+      `Clients : ${t.clients} · Missions : ${t.missions} · Factures : ${t.factures} · Paiements : ${t.paiements}`,
       "",
       "Contient des données personnelles : conservez ce message dans un espace protégé.",
-      "Restauration : cockpit → Import, à partir des exports CSV (même format).",
+      "Restauration : cockpit → Import, à partir des exports CSV (même format), dans l'ordre clients, missions, factures, paiements.",
     ].join("\n"),
     [{ filename: `${backupFileName()}.gz`, content: gzipBackup(backup), contentType: "application/gzip" }],
   );

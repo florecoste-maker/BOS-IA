@@ -89,17 +89,17 @@ describe("Décision et exécution (mode démonstration)", () => {
   it("simule l'envoi en démo, une seule fois, avec le brouillon modifié", async () => {
     const repo = await getRepository();
     assert.equal(repo.mode, "demo");
-    const learner = store.getLearners()[0];
+    const client = store.getClients().find((c) => c.email && c.contact)!;
     const run = store.recordAgentRun(
-      "agt-004",
+      "agt-001",
       {
-        resume: "Relance proposée.",
+        resume: "Suivi proposé.",
         actions: [
           {
-            type: "relance_apprenant",
-            description: "Relancer l'apprenant",
+            type: "suivi_client",
+            description: "Prendre des nouvelles",
             requiresHitl: true,
-            email: { cible: "apprenant", refId: learner.id, objet: "Reprise", corps: "Bonjour" },
+            email: { cible: "client", refId: client.id, objet: "Suivi", corps: "Bonjour" },
           },
         ],
       },
@@ -109,13 +109,13 @@ describe("Décision et exécution (mode démonstration)", () => {
 
     const [enriched] = await withRecipients(repo, [run.actions[0]]);
     assert.deepEqual(enriched.email?.destinataire, {
-      nom: `${learner.prenom} ${learner.nom}`,
-      email: learner.email,
+      nom: `${client.contact} (${client.nom})`,
+      email: client.email,
     });
 
-    const decided = await decideAction(repo, id, "approved", { objet: "  Reprise de votre parcours  ", corps: "" });
+    const decided = await decideAction(repo, id, "approved", { objet: "  Suivi de votre projet  ", corps: "" });
     assert.equal(decided.execution?.statut, "simule");
-    assert.equal(decided.email?.objet, "Reprise de votre parcours");
+    assert.equal(decided.email?.objet, "Suivi de votre projet");
     assert.equal(decided.email?.corps, "Bonjour", "un champ vide ne remplace pas le texte");
 
     await assert.rejects(() => decideAction(repo, id, "approved"), ActionError, "double clic refusé");
@@ -125,7 +125,7 @@ describe("Décision et exécution (mode démonstration)", () => {
   it("refuse sans rien exécuter", async () => {
     const repo = await getRepository();
     const run = store.recordAgentRun(
-      "agt-004",
+      "agt-006",
       {
         resume: "r",
         actions: [
@@ -133,7 +133,7 @@ describe("Décision et exécution (mode démonstration)", () => {
             type: "t",
             description: "d",
             requiresHitl: true,
-            email: { cible: "apprenant", refId: store.getLearners()[0].id, objet: "o", corps: "c" },
+            email: { cible: "client", refId: store.getClients()[0].id, objet: "o", corps: "c" },
           },
         ],
       },
@@ -148,38 +148,39 @@ describe("Décision et exécution (mode démonstration)", () => {
 describe("Changements de statut approuvés (mode démonstration)", () => {
   it("applique le statut choisi par l'humain, une seule fois", async () => {
     const repo = await getRepository();
-    const learner = store.getLearners().find((l) => l.status !== "abandon")!;
+    const client = store.getClients().find((c) => c.statut === "prospect")!;
     const run = store.recordAgentRun(
-      "agt-004",
+      "agt-001",
       {
         resume: "r",
         actions: [
           {
-            type: "ghost",
-            description: "Passer en ghost learner",
+            type: "prospect_inactif",
+            description: "Prospect sans réponse",
             requiresHitl: true,
-            operation: { type: "statut_apprenant", refId: learner.id, valeur: "inactif" },
+            operation: { type: "statut_client", refId: client.id, valeur: "inactif" },
           },
         ],
       },
       "m",
     )!;
     const [shown] = await withRecipients(repo, [run.actions[0]]);
-    assert.equal(shown.operation?.cible?.libelle, `${learner.prenom} ${learner.nom}`);
+    assert.equal(shown.operation?.cible?.libelle, client.nom);
+    assert.equal(shown.operation?.cible?.actuel, "Prospect");
 
-    const decided = await decideAction(repo, run.actions[0].id, "approved", { valeur: "abandon" }, "Léa");
+    const decided = await decideAction(repo, run.actions[0].id, "approved", { valeur: "perdu" }, "Léa");
     assert.equal(decided.execution?.statut, "fait");
-    assert.match(decided.execution!.message, /→ Abandon/);
-    assert.equal(store.getLearners().find((l) => l.id === learner.id)?.status, "abandon");
+    assert.match(decided.execution!.message, /Prospect → Perdu/);
+    assert.equal(store.getClients().find((c) => c.id === client.id)?.statut, "perdu");
     assert.equal(decided.decidePar, "Léa");
     await assert.rejects(() => retryAction(repo, run.actions[0].id), ActionError, "déjà appliqué");
   });
 
   it("ignore une valeur non autorisée choisie à l'approbation", async () => {
     const repo = await getRepository();
-    const invoice = store.getInvoices()[0];
+    const invoice = store.getInvoices().find((i) => i.status === "emise")!;
     const run = store.recordAgentRun(
-      "agt-005",
+      "agt-003",
       {
         resume: "r",
         actions: [
@@ -195,30 +196,54 @@ describe("Changements de statut approuvés (mode démonstration)", () => {
     )!;
     const decided = await decideAction(repo, run.actions[0].id, "approved", { valeur: "payee" });
     assert.equal(decided.operation?.valeur, "relance");
-    assert.equal(store.getInvoices()[0].status, "relance");
+    assert.equal(store.getInvoices().find((i) => i.id === invoice.id)?.status, "relance");
   });
 
-  it("combine statut et e-mail, et n'envoie rien si la fiche a disparu", async () => {
+  it("refuse de changer le statut d'une facture déjà payée", async () => {
     const repo = await getRepository();
-    const learner = store.getLearners()[1];
-    const both = store.recordAgentRun(
-      "agt-004",
+    const paid = store.getInvoices().find((i) => i.status === "payee")!;
+    const run = store.recordAgentRun(
+      "agt-003",
       {
         resume: "r",
         actions: [
           {
-            type: "reprise",
-            description: "Relancer et repasser en formation",
+            type: "relance",
+            description: "Relance",
             requiresHitl: true,
-            email: { cible: "apprenant", refId: learner.id, objet: "Reprise", corps: "Bonjour" },
-            operation: { type: "statut_apprenant", refId: learner.id, valeur: "en_formation" },
+            operation: { type: "statut_facture", refId: paid.id, valeur: "relance" },
+          },
+        ],
+      },
+      "m",
+    )!;
+    const decided = await decideAction(repo, run.actions[0].id, "approved");
+    assert.equal(decided.execution?.statut, "echec");
+    assert.match(decided.execution!.message, /déjà payée/);
+    assert.equal(store.getInvoices().find((i) => i.id === paid.id)?.status, "payee");
+  });
+
+  it("combine statut et e-mail, et n'envoie rien si la fiche a disparu", async () => {
+    const repo = await getRepository();
+    const mission = store.getMissions().find((m) => m.statut === "en_cours")!;
+    const both = store.recordAgentRun(
+      "agt-002",
+      {
+        resume: "r",
+        actions: [
+          {
+            type: "livraison",
+            description: "Annoncer la livraison et passer la mission en livrée",
+            requiresHitl: true,
+            email: { cible: "client", refId: mission.clientId, objet: "Livraison", corps: "Bonjour" },
+            operation: { type: "statut_mission", refId: mission.id, valeur: "livree" },
           },
           {
             type: "fantome",
             description: "Fiche inexistante",
             requiresHitl: true,
-            email: { cible: "apprenant", refId: learner.id, objet: "x", corps: "y" },
-            operation: { type: "statut_dossier", refId: "opco-inexistant", valeur: "transmis" },
+            email: { cible: "client", refId: mission.clientId, objet: "x", corps: "y" },
+            operation: { type: "statut_mission", refId: "mis-inexistante", valeur: "livree" },
           },
         ],
       },
@@ -226,7 +251,7 @@ describe("Changements de statut approuvés (mode démonstration)", () => {
     )!;
     const ok = await decideAction(repo, both.actions[0].id, "approved");
     assert.equal(ok.execution?.statut, "simule");
-    assert.match(ok.execution!.message, /→ En formation ; Mode démonstration/);
+    assert.match(ok.execution!.message, /En cours → Livrée ; Mode démonstration/);
     const ko = await decideAction(repo, both.actions[1].id, "approved");
     assert.equal(ko.execution?.statut, "echec");
     assert.match(ko.execution!.message, /Fiche introuvable/);

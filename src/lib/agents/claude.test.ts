@@ -29,36 +29,39 @@ describe("Garde-fous des agents IA", () => {
     assert.equal(out.actions[0].requiresHitl, false);
   });
 
-  it("garde un brouillon d'e-mail seulement vers un apprenant ou une facture connus, en HITL", () => {
-    const refs = { apprenants: new Set(["lrn-001"]), factures: new Set(["inv-003"]) };
-    const draft = { cible: "apprenant" as const, refId: "lrn-001", objet: " Reprise ", corps: " Bonjour " };
+  it("garde un brouillon d'e-mail seulement vers un client ou une facture connus, en HITL", () => {
+    const refs = { clients: new Set(["cli-001"]), factures: new Set(["inv-003"]) };
+    const draft = { cible: "client" as const, refId: "cli-001", objet: " Suivi ", corps: " Bonjour " };
     const out = normalizeProposal(
       libre,
       {
         resume: "r",
         actions: [
-          { type: "relance", description: "Relancer", requiresHitl: false, email: draft },
-          { type: "inconnu", description: "Écrire", requiresHitl: false, email: { ...draft, refId: "lrn-999" } },
+          { type: "suivi", description: "Écrire", requiresHitl: false, email: draft },
+          { type: "inconnu", description: "Écrire", requiresHitl: false, email: { ...draft, refId: "cli-999" } },
           { type: "facture", description: "Relancer", requiresHitl: false, email: { ...draft, cible: "facture", refId: "inv-001" } },
+          { type: "ancien", description: "Écrire", requiresHitl: false, email: { ...draft, cible: "apprenant" } as never },
         ],
       },
       refs,
     );
-    assert.deepEqual(out.actions[0].email, { cible: "apprenant", refId: "lrn-001", objet: "Reprise", corps: "Bonjour" });
+    assert.deepEqual(out.actions[0].email, { cible: "client", refId: "cli-001", objet: "Suivi", corps: "Bonjour" });
     assert.equal(out.actions[0].requiresHitl, true, "un e-mail passe toujours par la validation humaine");
     assert.equal(out.actions[1].email, undefined, "id inconnu écarté");
     assert.equal(out.actions[2].email, undefined, "facture sans adresse client écartée");
     assert.equal(out.actions[1].requiresHitl, false);
+    assert.equal(out.actions.length, 3, "au plus 3 actions");
     const sansRefs = normalizeProposal(libre, { resume: "r", actions: [{ type: "t", description: "d", requiresHitl: false, email: draft }] });
     assert.equal(sansRefs.actions[0].email, undefined);
   });
 
   it("garde un changement de statut seulement vers une fiche connue et une valeur autorisée", () => {
     const refs = {
-      apprenants: new Set(["lrn-003"]),
+      clients: new Set<string>(),
       factures: new Set<string>(),
+      tousClients: new Set(["cli-004"]),
+      missions: new Set(["mis-002"]),
       toutesFactures: new Set(["inv-003"]),
-      dossiers: new Set(["opco-002"]),
     };
     const act = (operation: unknown) => ({ type: "t", description: "d", requiresHitl: false, operation }) as never;
     const out = normalizeProposal(
@@ -66,14 +69,14 @@ describe("Garde-fous des agents IA", () => {
       {
         resume: "r",
         actions: [
-          act({ type: "statut_apprenant", refId: "lrn-003", valeur: "inactif" }),
+          act({ type: "statut_client", refId: "cli-004", valeur: "inactif" }),
           act({ type: "statut_facture", refId: "inv-003", valeur: "payee" }), // geste humain
-          act({ type: "statut_apprenant", refId: "lrn-003", valeur: "certifie" }), // geste humain
+          act({ type: "statut_mission", refId: "mis-002", valeur: "annulee" }), // geste humain
         ],
       },
       refs,
     );
-    assert.deepEqual(out.actions[0].operation, { type: "statut_apprenant", refId: "lrn-003", valeur: "inactif" });
+    assert.deepEqual(out.actions[0].operation, { type: "statut_client", refId: "cli-004", valeur: "inactif" });
     assert.equal(out.actions[0].requiresHitl, true, "un changement de statut passe par la validation humaine");
     assert.equal(out.actions[1].operation, undefined);
     assert.equal(out.actions[2].operation, undefined);
@@ -83,22 +86,29 @@ describe("Garde-fous des agents IA", () => {
       {
         resume: "r",
         actions: [
-          act({ type: "statut_dossier", refId: "opco-999", valeur: "transmis" }), // fiche inconnue
-          act({ type: "supprimer_tout", refId: "lrn-003", valeur: "inactif" }), // type inconnu
-          act({ type: "statut_dossier", refId: "opco-002", valeur: "transmis" }),
+          act({ type: "statut_mission", refId: "mis-999", valeur: "livree" }), // fiche inconnue
+          act({ type: "statut_apprenant", refId: "cli-004", valeur: "inactif" }), // type inconnu
+          act({ type: "statut_mission", refId: "mis-002", valeur: "livree" }),
         ],
       },
       refs,
     );
     assert.equal(others.actions[0].operation, undefined);
     assert.equal(others.actions[1].operation, undefined);
-    assert.equal(others.actions[2].operation?.valeur, "transmis");
+    assert.equal(others.actions[2].operation?.valeur, "livree");
+    const relance = normalizeProposal(libre, { resume: "r", actions: [act({ type: "statut_facture", refId: "inv-003", valeur: "relance" })] }, refs);
+    assert.equal(relance.actions[0].operation?.valeur, "relance");
   });
 
-  it("n'envoie pas les e-mails des apprenants au modèle", async () => {
+  it("ne transmet au modèle ni adresse, ni téléphone, ni référence bancaire", async () => {
     const context = await buildAgentContext(await getRepository());
-    assert.equal(JSON.stringify(context).includes("@"), false);
+    const json = JSON.stringify(context);
+    assert.equal(json.includes("@"), false);
+    assert.ok(context.clients.length > 0 && context.missions.length > 0 && context.paiements.length > 0);
+    assert.ok(context.clients.every((c) => !("email" in c) && !("telephone" in c) && typeof c.emailConnu === "boolean"));
     assert.ok(context.factures.every((f) => !("emailClient" in f) && typeof f.emailClientConnu === "boolean"));
+    assert.ok(context.paiements.every((p) => !("reference" in p)));
+    assert.equal(json.includes("01 23 45 67 89"), false);
   });
 });
 

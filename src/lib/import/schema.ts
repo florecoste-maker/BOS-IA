@@ -1,25 +1,35 @@
 /**
  * Colonnes attendues pour chaque type d'import et validation ligne par ligne.
  * En-têtes reconnus sans tenir compte des accents ni de la casse ; valeurs
- * françaises acceptées (27/10/2026, « 1 490,50 € », « Oui », « En formation »…).
+ * françaises acceptées (27/10/2026, « 1 490,50 € », « Prospect », « Virement »…).
  */
-import { statusLabel } from "@/lib/format";
+import {
+  CLIENT_STATUSES,
+  INVOICE_STATUSES,
+  MISSION_STATUSES,
+  MISSION_TYPES,
+  PAYMENT_MODES,
+  RECURRENCES,
+} from "@/lib/business";
+import { MISSION_TYPE_LABELS, PAYMENT_MODE_LABELS, statusLabel } from "@/lib/format";
 
-export type ImportKind = "sessions" | "apprenants" | "dossiers" | "factures";
+export type ImportKind = "clients" | "missions" | "factures" | "paiements";
 
 export const IMPORT_KINDS: Array<{ kind: ImportKind; label: string; key: string }> = [
-  { kind: "sessions", label: "Sessions de formation", key: "code" },
-  { kind: "apprenants", label: "Apprenants", key: "email" },
-  { kind: "dossiers", label: "Dossiers OPCO", key: "reference" },
+  { kind: "clients", label: "Clients", key: "nom" },
+  { kind: "missions", label: "Missions", key: "code" },
   { kind: "factures", label: "Factures", key: "numero" },
+  { kind: "paiements", label: "Paiements", key: "numero" },
 ];
 
 type FieldType =
   | "text"
+  | "note"
   | "email"
   | "int"
   | "percent"
   | "decimal"
+  | "rate"
   | "date"
   | "datetime"
   | "bool"
@@ -36,74 +46,48 @@ export interface Field {
   help?: string;
 }
 
-const LEARNER_STATUS = ["lead", "inscrit", "en_formation", "inactif", "certifie", "abandon"] as const;
-const PIPELINE_STAGE = [
-  "lead",
-  "inscription",
-  "parcours",
-  "evaluation",
-  "certification",
-  "completion",
-] as const;
-const SESSION_STATUS = ["planifiee", "en_cours", "terminee"] as const;
-const OPCO_STATUS = ["brouillon", "completude", "transmis", "accepte", "refuse", "paye"] as const;
-const RECURRENCE = ["mensuel", "trimestriel", "annuel"] as const;
-const INVOICE_STATUS = [
-  "brouillon",
-  "emise",
-  "acompte_paye",
-  "solde_du",
-  "payee",
-  "relance",
-  "impayee",
-] as const;
-
 export const FIELDS: Record<ImportKind, Field[]> = {
-  sessions: [
-    { key: "code", header: "code", type: "text", required: true, example: "GWS-INIT-7H", help: "Identifiant unique de la session" },
-    { key: "titre", header: "titre", aliases: ["intitule", "formation"], type: "text", required: true, example: "Google Workspace — Prise en main" },
-    { key: "debut", header: "debut", aliases: ["date_debut", "date_de_debut"], type: "date", required: true, example: "03/11/2026" },
-    { key: "fin", header: "fin", aliases: ["date_fin", "date_de_fin"], type: "date", required: true, example: "04/11/2026" },
-    { key: "formateur", header: "formateur", aliases: ["formatrice", "intervenant"], type: "text", required: true, example: "A. Moreau" },
-    { key: "places", header: "places", aliases: ["capacite", "nb_places"], type: "int", required: true, example: "12" },
-    { key: "inscrits", header: "inscrits", aliases: ["nb_inscrits"], type: "int", example: "8" },
-    { key: "statut", header: "statut", type: { enum: SESSION_STATUS }, example: "Planifiée", help: "Planifiée, En cours ou Terminée (défaut : Planifiée)" },
-    { key: "qualiopi", header: "indicateurs_qualiopi", aliases: ["qualiopi", "indicateurs"], type: "list", example: "I4|I11", help: "Séparés par | ou ," },
+  clients: [
+    { key: "nom", header: "nom", aliases: ["client", "entreprise", "societe", "raison_sociale"], type: "text", required: true, example: "Atelier Nord", help: "Nom de l'entreprise : identifiant unique du client" },
+    { key: "contact", header: "contact", aliases: ["nom_contact", "interlocuteur"], type: "text", example: "Camille Dupont" },
+    { key: "email", header: "email", aliases: ["e_mail", "courriel", "mail", "adresse_email"], type: "email", example: "camille@atelier-nord.fr", help: "Sert aux e-mails approuvés et aux relances de factures" },
+    { key: "telephone", header: "telephone", aliases: ["tel", "portable", "mobile"], type: "text", example: "01 23 45 67 89" },
+    { key: "secteur", header: "secteur", aliases: ["activite", "secteur_activite"], type: "text", example: "Artisanat" },
+    { key: "statut", header: "statut", type: { enum: CLIENT_STATUSES }, example: "Actif", help: "Prospect, Actif, Inactif ou Perdu (défaut : Prospect)" },
+    { key: "source", header: "source", aliases: ["origine", "provenance"], type: "text", example: "Recommandation" },
+    { key: "notes", header: "notes", aliases: ["remarques", "commentaire"], type: "note", example: "" },
   ],
-  apprenants: [
-    { key: "email", header: "email", aliases: ["e_mail", "courriel", "mail", "adresse_email"], type: "email", required: true, example: "camille.dupont@exemple.fr", help: "Identifiant unique de l'apprenant" },
-    { key: "nom", header: "nom", type: "text", required: true, example: "Dupont" },
-    { key: "prenom", header: "prenom", type: "text", required: true, example: "Camille" },
-    { key: "entreprise", header: "entreprise", aliases: ["societe", "employeur", "client"], type: "text", example: "Atelier Nord" },
-    { key: "statut", header: "statut", type: { enum: LEARNER_STATUS }, example: "Inscrit", help: "Lead, Inscrit, En formation, Ghost learner, Certifié, Abandon (défaut : Inscrit)" },
-    { key: "etape", header: "etape", aliases: ["etape_pipeline", "pipeline"], type: { enum: PIPELINE_STAGE }, example: "inscription", help: "lead, inscription, parcours, evaluation, certification, completion (défaut : inscription)" },
-    { key: "session", header: "session_code", aliases: ["session", "code_session"], type: "text", example: "GWS-INIT-7H", help: "Code d'une session existante ou importée avant" },
-    { key: "derniereActivite", header: "derniere_activite", aliases: ["derniere_connexion"], type: "datetime", example: "27/10/2026" },
-    { key: "comprehension", header: "comprehension_validee", aliases: ["comprehension"], type: "bool", example: "non", help: "oui / non" },
-    { key: "score", header: "score_quiz", aliases: ["score", "note"], type: "percent", example: "85", help: "0 à 100" },
-  ],
-  dossiers: [
-    { key: "reference", header: "reference", aliases: ["ref", "numero_dossier"], type: "text", required: true, example: "OPCO-2026-0842", help: "Identifiant unique du dossier" },
-    { key: "organisme", header: "organisme", aliases: ["opco", "financeur"], type: "text", required: true, example: "AKTO" },
-    { key: "apprenant", header: "apprenant_email", aliases: ["email_apprenant", "apprenant", "email"], type: "email", required: true, example: "camille.dupont@exemple.fr" },
-    { key: "session", header: "session_code", aliases: ["session", "code_session"], type: "text", required: true, example: "GWS-INIT-7H" },
-    { key: "montant", header: "montant", aliases: ["montant_ht", "montant_finance"], type: "decimal", required: true, example: "1490,00" },
-    { key: "statut", header: "statut", type: { enum: OPCO_STATUS }, example: "Complétude", help: "Brouillon, Complétude, Transmis, Accepté, Refusé, Payé (défaut : Brouillon)" },
-    { key: "completude", header: "completude", aliases: ["completude_pct"], type: "percent", example: "70", help: "0 à 100" },
-    { key: "pieces", header: "pieces_manquantes", aliases: ["pieces"], type: "list", example: "Attestation employeur|Programme signé", help: "Séparées par |" },
+  missions: [
+    { key: "code", header: "code", aliases: ["reference", "ref", "numero"], type: "text", required: true, example: "MIS-2026-0001", help: "Identifiant unique de la mission" },
+    { key: "titre", header: "titre", aliases: ["intitule", "mission", "prestation"], type: "text", required: true, example: "Agent IA — réponses aux devis" },
+    { key: "client", header: "client", aliases: ["nom_client", "entreprise"], type: "text", required: true, example: "Atelier Nord", help: "Nom d'un client existant ou importé avant" },
+    { key: "type", header: "type", aliases: ["type_mission", "nature"], type: { enum: MISSION_TYPES }, example: "Agent IA", help: "Agent IA, Automatisation, Conseil / accompagnement, Abonnement, Autre (défaut : Agent IA)" },
+    { key: "statut", header: "statut", type: { enum: MISSION_STATUSES }, example: "En cours", help: "Proposition, Signée, En cours, Livrée, Terminée, Annulée (défaut : Proposition)" },
+    { key: "montant", header: "montant_ht", aliases: ["montant", "prix_ht", "budget"], type: "decimal", example: "4800,00" },
+    { key: "debut", header: "debut", aliases: ["date_debut", "date_de_debut"], type: "date", example: "03/11/2026" },
+    { key: "fin", header: "fin", aliases: ["date_fin", "fin_prevue", "livraison"], type: "date", example: "15/12/2026" },
+    { key: "notes", header: "notes", aliases: ["remarques", "commentaire"], type: "note", example: "" },
   ],
   factures: [
-    { key: "numero", header: "numero", aliases: ["numero_facture", "facture", "n_facture"], type: "text", required: true, example: "FA-2026-0142", help: "Identifiant unique de la facture" },
-    { key: "client", header: "client", aliases: ["entreprise", "societe"], type: "text", required: true, example: "Atelier Nord" },
-    { key: "emailClient", header: "email_client", aliases: ["email", "e_mail", "courriel", "contact"], type: "email", example: "compta@atelier-nord.fr", help: "Adresse utilisée pour les relances" },
-    { key: "montant", header: "montant_ht", aliases: ["montant", "total_ht"], type: "decimal", required: true, example: "1490,00" },
+    { key: "numero", header: "numero", aliases: ["numero_facture", "facture", "n_facture"], type: "text", required: true, example: "FA-2026-0001", help: "Identifiant unique de la facture" },
+    { key: "client", header: "client", aliases: ["nom_client", "entreprise", "societe"], type: "text", required: true, example: "Atelier Nord", help: "Nom d'un client existant ou importé avant" },
+    { key: "mission", header: "mission_code", aliases: ["mission", "code_mission"], type: "text", example: "MIS-2026-0001", help: "Code d'une mission de ce client" },
+    { key: "objet", header: "objet", aliases: ["designation", "libelle"], type: "text", example: "Acompte 30 %" },
+    { key: "montant", header: "montant_ht", aliases: ["montant", "total_ht"], type: "decimal", required: true, example: "1440,00" },
+    { key: "tva", header: "taux_tva", aliases: ["tva", "tva_pct"], type: "rate", example: "20", help: "En % : 20, 10, 5,5… (défaut : 20 ; 0 en franchise de TVA)" },
     { key: "emiseLe", header: "emise_le", aliases: ["date_emission", "date", "date_facture"], type: "date", required: true, example: "06/10/2026" },
     { key: "echeance", header: "echeance", aliases: ["date_echeance"], type: "date", required: true, example: "05/11/2026" },
-    { key: "statut", header: "statut", type: { enum: INVOICE_STATUS }, example: "Émise", help: "Brouillon, Émise, Acompte payé, Solde dû, Payée, Relance, Impayée (défaut : Émise)" },
-    { key: "acompte", header: "acompte_pct", aliases: ["acompte"], type: "percent", example: "30", help: "0 à 100" },
-    { key: "payeeLe", header: "payee_le", aliases: ["date_paiement", "paye_le", "date_de_paiement", "reglee_le"], type: "date", example: "", help: "Date de paiement : sert au délai de paiement moyen" },
-    { key: "recurrence", header: "recurrence", aliases: ["abonnement", "periodicite"], type: { enum: RECURRENCE }, example: "", help: "Abonnement : mensuel, trimestriel ou annuel (sert au MRR) ; vide sinon" },
-    { key: "dossier", header: "dossier_reference", aliases: ["dossier_opco", "reference_dossier"], type: "text", example: "OPCO-2026-0842", help: "Référence d'un dossier OPCO existant" },
+    { key: "statut", header: "statut", type: { enum: INVOICE_STATUSES }, example: "Émise", help: "Brouillon, Émise, Partiellement payée, Payée, Relance, Impayée, Annulée (défaut : Émise)" },
+    { key: "payeeLe", header: "payee_le", aliases: ["date_paiement", "date_de_paiement", "soldee_le", "reglee_le"], type: "date", example: "", help: "Date du paiement qui a soldé la facture" },
+    { key: "recurrence", header: "recurrence", aliases: ["abonnement", "periodicite"], type: { enum: RECURRENCES }, example: "", help: "Abonnement : mensuel, trimestriel ou annuel (sert au MRR) ; vide sinon" },
+  ],
+  paiements: [
+    { key: "numero", header: "numero", aliases: ["numero_paiement", "numero_reglement", "n_reglement"], type: "text", required: true, example: "REG-2026-0001", help: "Identifiant unique du paiement" },
+    { key: "facture", header: "facture_numero", aliases: ["facture", "numero_facture"], type: "text", required: true, example: "FA-2026-0001", help: "Numéro d'une facture existante ou importée avant" },
+    { key: "montant", header: "montant", aliases: ["montant_ttc", "montant_recu"], type: "decimal", required: true, example: "1728,00", help: "Montant TTC reçu" },
+    { key: "date", header: "date", aliases: ["date_paiement", "date_de_paiement", "recu_le", "date_reglement"], type: "date", required: true, example: "20/10/2026" },
+    { key: "mode", header: "mode", aliases: ["mode_paiement", "moyen", "moyen_de_paiement"], type: { enum: PAYMENT_MODES }, example: "Virement", help: "Virement, Carte bancaire, Prélèvement, Chèque, Espèces, Stripe, PayPal, Autre (défaut : Virement)" },
+    { key: "reference", header: "reference", aliases: ["ref", "transaction"], type: "text", example: "VIR ATELIER NORD" },
   ],
 };
 
@@ -208,7 +192,9 @@ function enumMatcher(values: readonly string[]) {
   const map = new Map<string, string>();
   for (const v of values) {
     map.set(normalizeHeader(v), v);
-    map.set(normalizeHeader(statusLabel(v)), v);
+    for (const label of [statusLabel(v), MISSION_TYPE_LABELS[v], PAYMENT_MODE_LABELS[v]]) {
+      if (label) map.set(normalizeHeader(label), v);
+    }
   }
   return map;
 }
@@ -228,6 +214,8 @@ function convert(field: Field, raw: string): { value: ImportValue } | { error: s
   switch (t) {
     case "text":
       return v.length > 255 ? { error: `« ${field.header} » dépasse 255 caractères` } : { value: v };
+    case "note":
+      return v.length > 4000 ? { error: `« ${field.header} » dépasse 4000 caractères` } : { value: v };
     case "email": {
       const email = v.toLowerCase();
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 255
@@ -249,6 +237,12 @@ function convert(field: Field, raw: string): { value: ImportValue } | { error: s
         ? { error: `« ${field.header} » : montant invalide « ${v} »` }
         : { value: Math.round(n * 100) / 100 };
     }
+    case "rate": {
+      const n = parseDecimal(v.replace(/%$/, ""));
+      return n === null || n < 0 || n > 100
+        ? { error: `« ${field.header} » : taux de 0 à 100 attendu, reçu « ${v} »` }
+        : { value: Math.round(n * 100) / 100 };
+    }
     case "date": {
       const d = parseDate(v);
       return d ? { value: d } : { error: `« ${field.header} » : date invalide « ${v} » (JJ/MM/AAAA attendu)` };
@@ -264,7 +258,7 @@ function convert(field: Field, raw: string): { value: ImportValue } | { error: s
       return { error: `« ${field.header} » : oui ou non attendu, reçu « ${v} »` };
     }
     case "list":
-      // « | » prioritaire : une pièce peut contenir une virgule (« Attestation, signée »).
+      // « | » prioritaire : un élément peut contenir une virgule (« Devis, signé »).
       return {
         value: v
           .split(v.includes("|") ? "|" : /[,;]/)

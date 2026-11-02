@@ -24,9 +24,9 @@ export default async function AgentsPage() {
   return (
     <>
       <SectionTitle
-        eyebrow="Digital Nexus"
-        title="Écosystème multi-agents"
-        description="SMA hiérarchisé : QAA (vérité & conformité), IPOA (optimisation), FCA/MDGA (délégation surveillée). Les processus à haut risque restent sous HITL."
+        eyebrow="Agents IA"
+        title="Agents de l'agence"
+        description="Six agents analysent vos clients, missions, factures et paiements et proposent des actions (e-mails, relances, changements de statut). Rien ne part sans votre validation pour les actions sensibles (HITL)."
       />
       <AgentsClient initialAgents={agents} initialActions={await withRecipients(repo, actions)} />
 

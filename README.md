@@ -19,7 +19,7 @@ après un seul redéploiement dans hPanel (il ne se reconstruit pas automatiquem
 
 | Élément | État |
 |--------|------|
-| App Next.js BOS-IA (LMS, ERP OPCO, Digital Nexus HITL) | ✅ Présent |
+| App Next.js BOS-IA (clients, missions, factures, paiements, agents IA avec validation humaine) | ✅ Présent |
 | Entrée moteur `/` (pas de landing marketing) | ✅ Préparé |
 | Redirection `/rendez-vous` → site public | ✅ Préparé |
 | Cockpit `/app/*` | ✅ Présent |
@@ -69,8 +69,8 @@ npm run lint
 | `/` | Entrée moteur (lien vitrine + cockpit) |
 | `/rendez-vous` | Redirige vers jamaliance.com/reservation |
 | `/app` | Cockpit BOS-IA |
-| `/app/formation` | Pipeline formation |
-| `/app/finance` | Dossiers OPCO & factures |
+| `/app/clients` | Clients, prospects, contacts et missions |
+| `/app/finance` | Factures et paiements |
 | `/app/agents` | Supervision multi-agents + HITL |
 | `/app/import` | Import CSV / Excel des données |
 | `/app/integrations` | État Hostinger / TidyCal (+ aperçu calendrier) |
@@ -192,29 +192,52 @@ Pour les données réelles (MySQL ou MariaDB Hostinger) :
 4. Vérifier `/app/integrations` → carte « Base de données » : « MySQL connecté ».
 
 Les indicateurs sont tous calculés à partir des données :
-- **délai de paiement moyen** : jours entre émission et paiement, sur les factures
-  payées des 12 derniers mois (colonne `payee_le` à l'import, ou bouton « Marquer
-  payée » dans `/app/finance`) ; « — » tant qu'aucune facture payée n'est datée ;
+- **clients actifs / prospects**, **missions en cours** et **carnet de commandes**
+  (missions signées, en cours ou livrées, HT) ;
+- **à encaisser** : reste dû TTC des factures émises (brouillons et factures
+  annulées exclus) ; **encaissé ce mois-ci** : paiements reçus depuis le 1er ;
+- **délai de paiement moyen** : jours entre émission et paiement complet, sur les
+  factures soldées des 12 derniers mois ; « — » tant qu'aucune ne l'est ;
 - **MRR** : montant HT ramené au mois des factures d'abonnement (`recurrence` :
   mensuel, trimestriel, annuel) dont la période couvre aujourd'hui — une annuelle
-  de 1 200 € compte 100 € pendant 12 mois ; brouillons exclus ; « — » sans abonnement ;
-- jours de retard : depuis l'échéance, 0 pour une facture payée.
+  de 1 200 € compte 100 € pendant 12 mois ; brouillons et annulées exclus ;
+- jours de retard : depuis l'échéance, 0 pour une facture payée, annulée ou en brouillon.
+
+## Clients, missions, factures et paiements
+
+Tout se saisit dans le cockpit (aucun import nécessaire) :
+- **Clients** (`/app/clients`) : entreprise, contact principal, e-mail, téléphone,
+  secteur, source, notes ; statut prospect, actif, inactif ou perdu. L'e-mail du
+  contact sert aux e-mails approuvés et aux relances de factures.
+- **Missions** (depuis la fiche client) : agent IA, automatisation, conseil /
+  accompagnement, abonnement ; montant HT, dates ; code `MIS-AAAA-NNNN` automatique.
+- **Factures** (`/app/finance`) : client, mission éventuelle, objet, montant HT, TVA
+  (20 % par défaut, 0 en franchise), échéance, abonnement ; numéro `FA-AAAA-NNNN`
+  automatique ou celui de votre logiciel de facturation. BOS-IA suit les factures, il
+  ne produit pas le PDF légal.
+- **Paiements** : montant TTC reçu, date, mode (virement, carte, prélèvement, chèque,
+  espèces, Stripe, PayPal…), référence. Un premier versement passe la facture en
+  « partiellement payée », le versement qui la solde en « payée » (date de solde
+  enregistrée). Jamais plus que le reste dû ; deux saisies simultanées ne
+  dépassent pas le montant (facture verrouillée). Une facture payée ne change plus
+  de statut ; « payée » ne se choisit jamais à la main.
 
 ## Import CSV / Excel
 
-`/app/import` charge les sessions, apprenants, dossiers OPCO et factures depuis un
-fichier `.xlsx` (première feuille) ou CSV (séparateur `;`, `,` ou tabulation ;
-UTF-8 ou Windows-1252, comme les CSV d'Excel en français). Un modèle par type est
-téléchargeable sur la page.
+`/app/import` charge les clients, missions, factures et paiements depuis un fichier
+`.xlsx` (première feuille) ou CSV (séparateur `;`, `,` ou tabulation ; UTF-8 ou
+Windows-1252, comme les CSV d'Excel en français). Un modèle par type est
+téléchargeable sur la page. Facultatif : tout se saisit aussi dans le cockpit.
 
-- Ordre : sessions → apprenants → dossiers OPCO → factures (références par code de
-  session, e-mail d'apprenant, référence de dossier).
+- Ordre : clients → missions → factures → paiements (références par nom du client,
+  code de mission, numéro de facture).
 - **Vérifier** affiche toutes les erreurs ligne par ligne sans rien écrire ;
   **Importer** écrit tout ou rien, dans une transaction.
-- Une ligne existante (même code, e-mail, référence ou numéro) est mise à jour ;
-  une cellule vide conserve la valeur enregistrée.
-- Valeurs françaises acceptées : `27/10/2026`, `1 490,50 €`, `oui` / `non`,
-  statuts en toutes lettres (« En formation », « Payée »…).
+- Une ligne existante (même nom de client, code ou numéro) est mise à jour ; une
+  cellule vide conserve la valeur enregistrée.
+- Valeurs françaises acceptées : `27/10/2026`, `1 490,50 €`, `5,5 %`, statuts et
+  modes en toutes lettres (« Prospect », « Partiellement payée », « Carte bancaire »…).
+- Les paiements importés recalculent le statut de leur facture.
 - Limites : 2 Mo et 5 000 lignes par fichier ; l'ancien format `.xls` est refusé.
 
 Test d'intégration local : `BOS_TEST_DATABASE_URL=mysql://… npm test`
@@ -241,8 +264,8 @@ pas du jeton) ; 5 échecs de connexion par adresse IP ou par compte → 15 min d
 Le journal enregistre qui, quoi, quand et l'adresse IP : connexions (réussies,
 refusées, de secours), décisions sur les propositions des agents (l'auteur s'affiche
 aussi dans « Décisions récentes »), envois et renvois d'e-mails, analyses lancées,
-imports, exports, paiements, dossiers, actions sur les apprenants, gestion des
-comptes. Export CSV pour Qualiopi / RGPD (cellules protégées contre l'injection de
+imports, exports, fiches clients, missions, factures, paiements, gestion des
+comptes. Export CSV pour la comptabilité / RGPD (cellules protégées contre l'injection de
 formules Excel).
 
 ## Sécurité
@@ -255,25 +278,34 @@ formules Excel).
 
 ## Agents IA
 
-`POST /api/agents/run` `{ "agentId": "agt-005" }` : l'agent analyse les données du
+`POST /api/agents/run` `{ "agentId": "agt-003" }` : l'agent analyse les données du
 cockpit avec Claude (`claude-opus-5-5` par défaut, `BOS_AGENTS_MODEL` pour changer)
 et **propose** jusqu'à 3 actions. Rien n'est exécuté automatiquement. Les agents
 « HITL obligatoire » ou à risque élevé envoient toujours leurs propositions dans la
-file de validation humaine, quoi que réponde le modèle. Les e-mails des apprenants
-ne sont pas transmis au modèle.
+file de validation humaine, quoi que réponde le modèle. Les adresses e-mail,
+téléphones et références bancaires ne sont pas transmis au modèle.
+
+| Agent | Rôle | Validation humaine |
+| --- | --- | --- |
+| `agt-001` Suivi commercial | Relance des prospects et des clients sans nouvelles | Toujours |
+| `agt-002` Suivi des missions | Échéances, livraisons, avancement | Pour e-mails et statuts |
+| `agt-003` Recouvrement assisté | Relances des factures échues (risque élevé) | Toujours |
+| `agt-004` Pilotage financier | Trésorerie, encaissements, abonnements | Pour e-mails et statuts |
+| `agt-005` Conformité RGPD | Données clients minimales, conservation | Pour e-mails et statuts |
+| `agt-006` Assistant e-mails | Rédaction des e-mails aux clients | Toujours |
 
 ## Exécution des actions approuvées
 
-Quand une action consiste à écrire à un apprenant ou au client d'une facture, l'agent
+Quand une action consiste à écrire à un client ou au client d'une facture, l'agent
 joint un **brouillon d'e-mail**. Dans la file HITL (`/app/agents`), le brouillon
 s'affiche avec son destinataire ; objet et texte sont modifiables, puis
 **« Approuver et envoyer »** l'envoie par SMTP. Les autres actions restent « à
 réaliser par l'équipe ».
 
 Garde-fous :
-- le modèle ne fournit jamais d'adresse : il désigne un apprenant ou une facture par
-  son id, l'adresse est lue en base (e-mail de l'apprenant, `email_client` de la
-  facture) ; un id inconnu ou une facture sans adresse écarte le brouillon ;
+- le modèle ne fournit jamais d'adresse : il désigne un client ou une facture par
+  son id, l'adresse est lue en base (e-mail du contact sur la fiche client) ; un id
+  inconnu ou un client sans adresse écarte le brouillon ;
 - les adresses ne sont pas transmises au modèle ;
 - tout brouillon passe par la validation humaine, quel que soit l'agent ;
 - une décision ne se prend qu'une fois : pas de double envoi sur double clic ;
@@ -310,8 +342,8 @@ bouton « Envoyer le test » (administrateurs, inscrit au journal) qui envoie un
 vrai message à l'adresse choisie. S'il arrive en spam : vérifier SPF et DKIM du
 domaine (hPanel → Domaines → DNS). Une fois les essais concluants, vider
 `BOS_EMAIL_REDIRECTION` pour que les e-mails approuvés partent aux vrais
-destinataires. Pour les relances de factures, importer les factures avec la
-colonne `email_client`.
+destinataires. Pour les relances de factures, renseigner l'e-mail du contact sur la
+fiche client.
 
 ### Changements de statut
 
@@ -320,14 +352,14 @@ approbation (seul ou avec un e-mail : « relancer et passer en relance ») :
 
 | Opération | Valeurs proposables |
 | --- | --- |
-| Statut d'un apprenant | lead, inscrit, en formation, ghost learner, abandon |
-| Statut d'un dossier OPCO | brouillon, complétude, transmis, accepté, refusé |
-| Statut d'une facture | émise, acompte payé, solde dû, relance, impayée |
+| Statut d'un client | prospect, actif, inactif, perdu |
+| Statut d'une mission | en cours, livrée, terminée |
+| Statut d'une facture | émise, relance, impayée |
 
 La carte affiche la fiche visée et son statut actuel ; la valeur reste modifiable
-dans la liste avant d'approuver. Les gestes qui engagent l'organisme restent
-humains : « payée » (avec la date, via le paiement), « certifié », etc. ne sont
-jamais proposables, et une valeur hors liste est ignorée, même modifiée à la main.
+dans la liste avant d'approuver. Les gestes qui engagent l'agence restent humains :
+« payée » (via un paiement), mission « signée » ou « annulée », facture « annulée »
+ne sont jamais proposables, et une valeur hors liste est ignorée, même modifiée à la main.
 Fiche inconnue → proposition écartée ; fiche supprimée entre-temps → « Échec », et
 l'e-mail associé n'est pas envoyé. Chaque application est inscrite au journal.
 
@@ -335,8 +367,8 @@ l'e-mail associé n'est pas envoyé. Chaque application est inscrite au journal.
 
 **Exports** (`/app/import` → « Exporter et sauvegarder », session requise) :
 sauvegarde complète JSON, et un CSV par type **au format exact de l'import**.
-Restauration : réimporter ces CSV dans l'ordre sessions → apprenants → dossiers →
-factures (testé : base vidée puis restaurée, indicateurs identiques).
+Restauration : réimporter ces CSV dans l'ordre clients → missions → factures →
+paiements (tests automatiques : chaque export se relit sans erreur à l'import).
 
 **Alertes** — `BOS_ALERTES_EMAIL` reçoit, par le SMTP configuré :
 - un rapport après chaque passage planifié, seulement s'il y a des échecs ou des

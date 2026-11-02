@@ -28,31 +28,61 @@ export function formatMoney(amount: number): string {
 
 export function statusLabel(status: string): string {
   const map: Record<string, string> = {
-    lead: "Lead",
-    inscrit: "Inscrit",
-    en_formation: "En formation",
-    inactif: "Ghost learner",
-    certifie: "Certifié",
-    abandon: "Abandon",
+    // Clients
+    prospect: "Prospect",
+    actif: "Actif",
+    inactif: "Inactif",
+    perdu: "Perdu",
+    // Missions
+    proposition: "Proposition",
+    signee: "Signée",
+    en_cours: "En cours",
+    livree: "Livrée",
+    terminee: "Terminée",
+    annulee: "Annulée",
+    // Factures
     brouillon: "Brouillon",
-    completude: "Complétude",
-    transmis: "Transmis",
-    accepte: "Accepté",
-    refuse: "Refusé",
-    paye: "Payé",
     emise: "Émise",
-    acompte_paye: "Acompte payé",
-    solde_du: "Solde dû",
+    partiellement_payee: "Partiellement payée",
     payee: "Payée",
     relance: "Relance",
     impayee: "Impayée",
-    actif: "Actif",
+    // Agents
     en_attente_hitl: "HITL",
     pause: "Pause",
     erreur: "Erreur",
-    planifiee: "Planifiée",
-    en_cours: "En cours",
-    terminee: "Terminée",
   };
   return map[status] ?? status;
+}
+
+export const MISSION_TYPE_LABELS: Record<string, string> = {
+  agent_ia: "Agent IA",
+  automatisation: "Automatisation",
+  conseil: "Conseil / accompagnement",
+  abonnement: "Abonnement",
+  autre: "Autre",
+};
+
+export const PAYMENT_MODE_LABELS: Record<string, string> = {
+  virement: "Virement",
+  carte: "Carte bancaire",
+  prelevement: "Prélèvement",
+  cheque: "Chèque",
+  especes: "Espèces",
+  stripe: "Stripe",
+  paypal: "PayPal",
+  autre: "Autre",
+};
+
+export function missionTypeLabel(type: string) {
+  return MISSION_TYPE_LABELS[type] ?? type;
+}
+
+export function paymentModeLabel(mode: string) {
+  return PAYMENT_MODE_LABELS[mode] ?? mode;
+}
+
+/** Montant au centime près, ex. « 1 490,50 € ». */
+export function formatMoneyCents(amount: number): string {
+  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(amount);
 }

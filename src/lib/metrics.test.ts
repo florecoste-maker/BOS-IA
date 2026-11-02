@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { monthlyRecurringRevenue, paymentDelay } from "./metrics";
+import { computeMetrics, monthlyRecurringRevenue, paymentDelay } from "./metrics";
 import type { Invoice } from "./types";
 
 const NOW = Date.parse("2026-10-27T10:00:00Z");
@@ -9,9 +9,13 @@ function invoice(partial: Partial<Invoice>): Invoice {
   return {
     id: "i",
     numero: "FA",
+    clientId: "c",
     client: "C",
     montantHT: 100,
-    acomptePct: 0,
+    tauxTva: 20,
+    montantTTC: 120,
+    montantPaye: 0,
+    resteDu: 120,
     status: "emise",
     emiseLe: "2026-10-01",
     echeance: "2026-10-31",
@@ -58,7 +62,8 @@ describe("MRR", () => {
         invoice({ recurrence: "mensuel", montantHT: 999, emiseLe: "2026-10-20", status: "brouillon" }),
         invoice({ recurrence: "mensuel", montantHT: 999, emiseLe: "2026-11-01" }), // à venir
         invoice({ recurrence: "mensuel", montantHT: 999, emiseLe: "2026-09-26" }), // échu le 26/10
-        invoice({ montantHT: 5000, emiseLe: "2026-10-20" }), // formation ponctuelle
+        invoice({ recurrence: "mensuel", montantHT: 999, emiseLe: "2026-10-20", status: "annulee" }),
+        invoice({ montantHT: 5000, emiseLe: "2026-10-20" }), // mission ponctuelle
       ],
       NOW,
     );
@@ -69,5 +74,46 @@ describe("MRR", () => {
     const jan31 = [invoice({ recurrence: "mensuel", montantHT: 100, emiseLe: "2026-01-31" })];
     assert.equal(monthlyRecurringRevenue(jan31, Date.parse("2026-02-27T12:00:00Z")).actifs, 1);
     assert.equal(monthlyRecurringRevenue(jan31, Date.parse("2026-02-28T12:00:00Z")).actifs, 0);
+  });
+});
+
+describe("Indicateurs de l'agence", () => {
+  it("compte clients, missions, reste à encaisser et encaissements du mois", () => {
+    const base = { creeLe: "2026-01-01T00:00:00.000Z", derniereActivite: "2026-10-01T00:00:00.000Z" };
+    const mission = { clientId: "c", type: "agent_ia" as const, creeLe: base.creeLe };
+    const m = computeMetrics(
+      {
+        clients: [
+          { id: "a", nom: "A", statut: "actif", ...base },
+          { id: "b", nom: "B", statut: "prospect", ...base },
+          { id: "c", nom: "C", statut: "perdu", ...base },
+        ],
+        missions: [
+          { id: "m1", code: "M1", titre: "x", statut: "en_cours", montantHT: 3000, ...mission },
+          { id: "m2", code: "M2", titre: "x", statut: "signee", montantHT: 1000, ...mission },
+          { id: "m3", code: "M3", titre: "x", statut: "proposition", montantHT: 9999, ...mission },
+        ],
+        invoices: [
+          invoice({ resteDu: 120, joursRetard: 3 }),
+          invoice({ status: "brouillon", resteDu: 500 }), // pas encore dû
+          invoice({ status: "annulee", resteDu: 0 }),
+          invoice({ status: "partiellement_payee", resteDu: 60 }),
+        ],
+        payments: [
+          { id: "p1", numero: "R1", factureId: "i", montant: 60, date: "2026-10-03", mode: "virement", creeLe: "" },
+          { id: "p2", numero: "R2", factureId: "i", montant: 500, date: "2026-09-30", mode: "virement", creeLe: "" },
+        ],
+        agents: [],
+        agentActions: [],
+      },
+      NOW,
+    );
+    assert.equal(m.clientsActifs, 1);
+    assert.equal(m.prospects, 1);
+    assert.equal(m.missionsEnCours, 1);
+    assert.equal(m.carnetCommandes, 4000);
+    assert.equal(m.aEncaisser, 180);
+    assert.equal(m.facturesEnRetard, 1);
+    assert.equal(m.encaisseMois, 60);
   });
 });
