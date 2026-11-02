@@ -125,3 +125,17 @@ describe("Adresse du cockpit affichée", () => {
     delete process.env.NEXT_PUBLIC_APP_URL;
   });
 });
+
+describe("Ancienne adresse bos.jamaliance.com", () => {
+  it("est redirigée vers app.jamaliance.com, et seulement elle", async () => {
+    const config = (await import("../../../next.config.mjs")).default;
+    const regles = await config.redirects!();
+    assert.equal(regles.length, 2);
+    for (const r of regles) {
+      assert.equal(r.permanent, false);
+      assert.ok(r.destination.startsWith("https://app.jamaliance.com/"));
+      assert.deepEqual(r.has, [{ type: "host", value: "bos\\.jamaliance\\.com" }]);
+    }
+    assert.equal(regles.find((r) => r.source === "/")?.destination, "https://app.jamaliance.com/app");
+  });
+});

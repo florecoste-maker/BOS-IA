@@ -10,7 +10,10 @@
 
 `bos.jamaliance.com` est une **ancienne adresse abandonnée** (site Hostinger qui ne
 se met plus à jour) : elle n'est plus jamais affichée, même si `NEXT_PUBLIC_APP_URL`
-la désigne encore dans hPanel (`cockpitBaseUrl()` dans `src/lib/brand.ts`).
+la désigne encore dans hPanel (`cockpitBaseUrl()` dans `src/lib/brand.ts`), et toute
+visite y est redirigée (307, réversible) vers `app.jamaliance.com` — l'accueil vers
+`/app` (`redirects()` dans `next.config.mjs`). La redirection prend effet sur ce site
+après un seul redéploiement dans hPanel (il ne se reconstruit pas automatiquement).
 
 ## Ce qui existe déjà
 

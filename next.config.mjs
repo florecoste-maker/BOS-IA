@@ -30,6 +30,20 @@ const nextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+  /**
+   * bos.jamaliance.com est une ancienne adresse : toute visite est renvoyée vers
+   * le cockpit retenu, app.jamaliance.com (l'accueil vers /app, les autres
+   * chemins vers le même chemin). Redirection temporaire (307) : réversible,
+   * jamais mise en cache définitivement par les navigateurs. Ne s'applique
+   * qu'à cette adresse ; app.jamaliance.com n'est pas concerné.
+   */
+  async redirects() {
+    const ancienneAdresse = [{ type: "host", value: "bos\\.jamaliance\\.com" }];
+    return [
+      { source: "/", has: ancienneAdresse, destination: "https://app.jamaliance.com/app", permanent: false },
+      { source: "/:path+", has: ancienneAdresse, destination: "https://app.jamaliance.com/:path+", permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;
