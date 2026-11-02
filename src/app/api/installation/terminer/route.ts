@@ -12,7 +12,7 @@ import {
 import { audit, clientIp } from "@/lib/audit";
 import { ensureSessionSecret, loadPersistentEnv, quoteEnvValue, writeEnvVariables } from "@/lib/env-files";
 import { redirectTo } from "@/lib/http";
-import { checkInstallationCode, consumeInstallationCode } from "@/lib/installation/code";
+import { checkInstallationCode, checkResetCode, consumeInstallationCode } from "@/lib/installation/code";
 
 export const dynamic = "force-dynamic";
 
@@ -35,8 +35,13 @@ export async function POST(request: Request) {
   const ip = clientIp(request);
 
   loadPersistentEnv();
-  if (getAuthConfig().password) return redirectTo("/login?installe=deja");
   if (isVercel()) return redirectTo("/installation");
+  // Déjà installé : seul un code de réinitialisation (workflow GitHub, 24 h) permet de changer le mot de passe.
+  const reinitialisation = Boolean(getAuthConfig().password);
+  if (reinitialisation && !checkResetCode(code)) {
+    if (code) recordLoginFailure(`installation:${ip}`);
+    return redirectTo("/login?installe=deja");
+  }
   if (isLoginBlocked(`installation:${ip}`)) return back("bloque", code);
   if (!checkInstallationCode(code)) {
     recordLoginFailure(`installation:${ip}`);
@@ -57,7 +62,7 @@ export async function POST(request: Request) {
   clearLoginFailures(`installation:${ip}`);
 
   if (!getAuthConfig().configured) return redirectTo("/login?erreur=config");
-  await audit({ id: SECOURS.uid, nom: SECOURS.nom }, "installation", "cockpit", { request });
+  await audit({ id: SECOURS.uid, nom: SECOURS.nom }, reinitialisation ? "mot_de_passe_reinitialise" : "installation", "cockpit", { request });
 
   const response = redirectTo("/app");
   response.cookies.set(SESSION_COOKIE, createSessionToken(SECOURS), {

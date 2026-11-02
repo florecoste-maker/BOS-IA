@@ -22,20 +22,40 @@ function readCode(start?: string) {
   }
 }
 
-/** Nouveau code (l'ancien devient invalide). */
-export function issueInstallationCode(start?: string) {
+/** Durée de validité d'un code de réinitialisation du mot de passe. */
+export const RESET_TTL_MS = 24 * 3600 * 1000;
+
+/**
+ * Nouveau code (l'ancien devient invalide). `reinitialisation` : le code permet
+ * aussi de remplacer un mot de passe administrateur existant (oublié), pendant
+ * 24 h ; il est émis seulement par le workflow GitHub du dépôt privé.
+ */
+export function issueInstallationCode(start?: string, options: { reinitialisation?: boolean; now?: number } = {}) {
   const code = randomBytes(18).toString("base64url");
+  const expire = options.reinitialisation ? new Date((options.now ?? Date.now()) + RESET_TTL_MS).toISOString() : null;
   writeFileSync(
     file(start),
     [
       "Code d'installation du cockpit BOS-IA (usage unique, ne pas partager).",
       "Ouvrez https://<adresse du cockpit>/installation et saisissez :",
       `code=${code}`,
+      ...(expire ? [`reinitialisation=${expire}`] : []),
       "",
     ].join("\n"),
     { mode: 0o600 },
   );
   return code;
+}
+
+/** Code valide ET émis pour une réinitialisation encore dans son délai. */
+export function checkResetCode(candidate: string, start?: string, now = Date.now()) {
+  if (!checkInstallationCode(candidate, start)) return false;
+  try {
+    const expire = readFileSync(file(start), "utf8").match(/reinitialisation=(\S+)/)?.[1];
+    return Boolean(expire && Date.parse(expire) > now);
+  } catch {
+    return false;
+  }
 }
 
 /** Code existant, créé au besoin (secours : lisible dans le gestionnaire de fichiers Hostinger). */

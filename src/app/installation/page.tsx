@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { brand } from "@/lib/brand";
 import { getAuthConfig, isVercel } from "@/lib/auth";
 import { loadPersistentEnv } from "@/lib/env-files";
-import { ensureInstallationCode } from "@/lib/installation/code";
+import { checkResetCode, ensureInstallationCode } from "@/lib/installation/code";
 
 export const metadata: Metadata = {
   title: `Installation — ${brand.product}`,
@@ -29,7 +29,9 @@ export default async function InstallationPage({ searchParams }: PageProps<"/ins
   const code = typeof params.code === "string" ? params.code : "";
 
   loadPersistentEnv();
-  const installed = Boolean(getAuthConfig().password);
+  // Mot de passe oublié : un lien de réinitialisation valide rouvre le formulaire.
+  const reinitialisation = Boolean(getAuthConfig().password) && Boolean(code) && checkResetCode(code);
+  const installed = Boolean(getAuthConfig().password) && !reinitialisation;
   const vercel = isVercel();
   // Code de secours lisible dans le gestionnaire de fichiers si GitHub est indisponible.
   if (!installed && !vercel) ensureInstallationCode();
@@ -40,7 +42,7 @@ export default async function InstallationPage({ searchParams }: PageProps<"/ins
         {brand.agency} · {brand.product}
       </p>
       <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight text-ink">
-        Installation du cockpit
+        {reinitialisation ? "Nouveau mot de passe" : "Installation du cockpit"}
       </h1>
 
       {vercel && !installed ? (

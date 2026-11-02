@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Jeton refusé" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => ({}))) as { variables?: Record<string, unknown> };
+  const body = (await request.json().catch(() => ({}))) as { variables?: Record<string, unknown>; reinitialiser?: unknown };
   const values: Record<string, string> = {};
   for (const [key, value] of Object.entries(body.variables ?? {})) {
     if (TRANSMISSIBLES.has(key) && typeof value === "string" && value.trim()) values[key] = value.trim();
@@ -67,13 +67,16 @@ export async function POST(request: Request) {
   }
 
   const auth = getAuthConfig();
-  const installer = !auth.password;
+  // Mot de passe oublié : code à usage unique (24 h) pour en choisir un nouveau ;
+  // l'actuel reste valable tant que le lien n'est pas utilisé.
+  const reinitialisation = body.reinitialiser === true && Boolean(auth.password);
+  const installer = !auth.password || reinitialisation;
   return NextResponse.json({
     service: "bos-ia",
     variables_enregistrees: Object.keys(values).sort(),
     base_de_donnees: baseDeDonnees,
     acces: auth.configured,
     problemes: auth.problems,
-    ...(installer ? { code: issueInstallationCode() } : {}),
+    ...(installer ? { code: issueInstallationCode(undefined, { reinitialisation }), reinitialisation } : {}),
   });
 }
