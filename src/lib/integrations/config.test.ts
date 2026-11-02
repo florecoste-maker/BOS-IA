@@ -105,3 +105,23 @@ describe("Jamaliance integrations config", () => {
     assert.equal(overview.hostinger.servedHost, null);
   });
 });
+
+describe("Adresse du cockpit affichée", () => {
+  it("l'ancienne adresse bos.jamaliance.com est remplacée par app.jamaliance.com", async () => {
+    const { cockpitBaseUrl } = await import("../brand");
+    assert.equal(cockpitBaseUrl("https://bos.jamaliance.com"), "https://app.jamaliance.com");
+    assert.equal(cockpitBaseUrl("https://bos.jamaliance.com/"), "https://app.jamaliance.com");
+    assert.equal(cockpitBaseUrl(""), "https://app.jamaliance.com");
+    assert.equal(cockpitBaseUrl("pas une url"), "https://app.jamaliance.com");
+    assert.equal(cockpitBaseUrl("https://app.jamaliance.com/"), "https://app.jamaliance.com");
+    assert.equal(cockpitBaseUrl("https://autre.exemple.fr"), "https://autre.exemple.fr");
+  });
+
+  it("carte Hostinger : app.jamaliance.com, sans alerte de domaine, même si le réglage dit bos", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://bos.jamaliance.com";
+    const overview = getIntegrationsOverview("app.jamaliance.com");
+    assert.equal(overview.hostinger.appUrl, "https://app.jamaliance.com");
+    assert.deepEqual(overview.hostinger.needsFromUser, []);
+    delete process.env.NEXT_PUBLIC_APP_URL;
+  });
+});

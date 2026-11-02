@@ -3,7 +3,7 @@
  * que les e-mails approuvés. Sans adresse ou sans SMTP : rien n'est envoyé,
  * l'information reste visible dans le cockpit.
  */
-import { brand } from "@/lib/brand";
+import { brand, cockpitBaseUrl } from "@/lib/brand";
 import type { Repository } from "@/lib/data";
 import { getMailConfig, isEmail, sendMail, type MailAttachment } from "@/lib/mail";
 
@@ -37,8 +37,7 @@ export async function sendAlert(
 }
 
 function cockpitUrl(path: string) {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.trim() || brand.appUrl;
-  return `${base.replace(/\/$/, "")}${path}`;
+  return `${cockpitBaseUrl()}${path}`;
 }
 
 export interface RunOutcome {
