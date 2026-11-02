@@ -18,13 +18,14 @@ const PUBLIC_API = [
   "/api/installation/terminer",
 ];
 
-/** Réservé aux administrateurs : comptes, journal, e-mail de test. */
+/** Réservé aux administrateurs : comptes, journal, e-mail de test, réglages du serveur. */
 const ADMIN_PATHS = [
   "/app/utilisateurs",
   "/app/journal",
   "/api/utilisateurs",
   "/api/journal",
   "/api/integrations/test-email",
+  "/api/reglages",
 ];
 
 export async function proxy(request: NextRequest) {

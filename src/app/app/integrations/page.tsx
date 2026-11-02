@@ -1,6 +1,7 @@
 import { SectionTitle } from "@/components/ui";
 import { IntegrationsPanel } from "@/components/integrations-panel";
 import { TidyCalEmbed } from "@/components/tidycal-embed";
+import { isVercel } from "@/lib/auth";
 import { getActor } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -12,11 +13,11 @@ export default async function IntegrationsPage() {
       <SectionTitle
         eyebrow="Connexions"
         title="Hostinger & TidyCal"
-        description="Vitrine = jamaliance.com (Horizons, intacte). Moteur = app.jamaliance.com (Web App Node.js). Les secrets se renseignent dans hPanel / TidyCal."
+        description="Vitrine = jamaliance.com (Horizons, intacte). Moteur BOS-IA sur Hostinger (Web App Node.js). Base de données et e-mails se règlent ci-dessous (administrateurs)."
       />
 
       <section className="border-y border-line bg-surface/60 py-8">
-        <IntegrationsPanel isAdmin={actor?.role === "admin"} />
+        <IntegrationsPanel isAdmin={actor?.role === "admin"} reglagesServeur={!isVercel()} />
       </section>
 
       <section className="mt-14">

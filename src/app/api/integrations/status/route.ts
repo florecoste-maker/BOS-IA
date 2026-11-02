@@ -43,11 +43,11 @@ export async function GET(request: NextRequest) {
           : dbProbe.message,
       needsFromUser: !dbProbe
         ? [
-            "Base MySQL (hPanel → Bases de données) puis DB_HOST, DB_NAME, DB_USER, DB_PASSWORD (ou DATABASE_URL)",
+            "Créer la base dans hPanel → Bases de données, puis la renseigner dans « Réglages du serveur » ci-dessus",
           ]
         : dbProbe.ok
           ? []
-          : ["Vérifier l'hôte, le nom de la base, l'utilisateur et le mot de passe dans hPanel"],
+          : ["Vérifier le nom de la base, l'utilisateur et le mot de passe (« Réglages du serveur » ci-dessus)"],
     },
     emails: {
       status: !mail ? "missing" : mailProbe?.ok && !mailWarnings(mail).length ? "configured" : "partial",
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
             ? mailProbe.message
             : "",
       needsFromUser: !mail
-        ? ["SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD et SMTP_FROM dans hPanel"]
+        ? ["Renseigner la boîte d'envoi dans « Réglages du serveur » ci-dessus"]
         : mailProbe?.ok
           ? []
           : ["Vérifier l'hôte, le port, l'utilisateur et le mot de passe SMTP"],
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
       adresse: getAlertAddress(),
       needsFromUser: [
         !getAlertAddress()
-          ? "BOS_ALERTES_EMAIL : adresse qui reçoit rapports, alertes et sauvegardes"
+          ? "Adresse qui reçoit rapports, alertes et sauvegardes (« Réglages du serveur » ci-dessus)"
           : null,
         getAlertAddress() && !mailProbe?.ok ? "SMTP connecté (les alertes partent par e-mail)" : null,
         !schedule.configured ? "BOS_CRON_SECRET (rapport quotidien, bilan de santé, sauvegarde hebdomadaire)" : null,
