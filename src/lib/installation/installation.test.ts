@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { ensureSessionSecret, findEnvFiles, persistentDir, readEnvFile, writeEnvVariables } from "../env-files";
-import { checkInstallationCode, consumeInstallationCode, ensureInstallationCode, issueInstallationCode } from "./code";
+import { RESET_TTL_MS, checkInstallationCode, checkResetCode, consumeInstallationCode, ensureInstallationCode, issueInstallationCode } from "./code";
 import { OIDC_AUDIENCE, OIDC_ISSUER, claimsProblem } from "./github-oidc";
 
 const NOW = Date.UTC(2026, 9, 30, 12);
@@ -82,6 +82,18 @@ describe("Réglages persistants écrits par le serveur", () => {
     assert.ok(!checkInstallationCode(code, app));
     consumeInstallationCode(app);
     assert.ok(!checkInstallationCode(next, app));
+  });
+
+  it("code de réinitialisation : seul un code émis comme tel, et pendant 24 h", () => {
+    const simple = issueInstallationCode(app);
+    assert.ok(!checkResetCode(simple, app));
+    const now = Date.now();
+    const reset = issueInstallationCode(app, { reinitialisation: true, now });
+    assert.ok(checkResetCode(reset, app, now + 1000));
+    assert.ok(!checkResetCode(reset, app, now + RESET_TTL_MS + 1000));
+    assert.ok(!checkResetCode("faux", app, now));
+    consumeInstallationCode(app);
+    assert.ok(!checkResetCode(reset, app, now));
   });
 });
 
