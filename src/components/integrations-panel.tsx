@@ -37,6 +37,7 @@ type Overview = {
   agentsIa: {
     status: "configured" | "partial" | "missing";
     model: string;
+    verification: string | null;
     needsFromUser: string[];
   };
   emails: {
@@ -266,6 +267,7 @@ export function IntegrationsPanel({
         </div>
         <ul className="mt-3 space-y-1 text-sm text-ink-muted">
           <li>Modèle : {data.agentsIa.model}</li>
+          {data.agentsIa.verification ? <li>{data.agentsIa.verification}</li> : null}
           <li>Validation humaine (HITL) : forcée pour les agents à risque</li>
         </ul>
         {data.agentsIa.needsFromUser.length > 0 ? (

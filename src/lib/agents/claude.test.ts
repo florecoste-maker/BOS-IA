@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildAgentContext, normalizeProposal } from "./claude";
+import Anthropic from "@anthropic-ai/sdk";
+import { buildAgentContext, describeClaudeError, normalizeProposal } from "./claude";
 import { getRepository } from "../data";
 import { store } from "../store";
 
@@ -98,5 +99,20 @@ describe("Garde-fous des agents IA", () => {
     const context = await buildAgentContext(await getRepository());
     assert.equal(JSON.stringify(context).includes("@"), false);
     assert.ok(context.factures.every((f) => !("emailClient" in f) && typeof f.emailClientConnu === "boolean"));
+  });
+});
+
+describe("Erreurs de l'API Claude expliquées", () => {
+  it("crédit épuisé, clé refusée, autre erreur", () => {
+    const credit = new Anthropic.BadRequestError(
+      400,
+      { type: "error", error: { type: "invalid_request_error", message: "Your credit balance is too low to access the Anthropic API." } },
+      "Your credit balance is too low to access the Anthropic API.",
+      new Headers(),
+    );
+    assert.match(describeClaudeError(credit)!.message, /Crédit Anthropic épuisé/);
+    const auth = new Anthropic.AuthenticationError(401, undefined, "invalid x-api-key", new Headers());
+    assert.match(describeClaudeError(auth)!.message, /refusée/);
+    assert.equal(describeClaudeError(new Error("x")), null);
   });
 });

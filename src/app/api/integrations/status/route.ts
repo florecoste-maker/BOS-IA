@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getAgentsConfig } from "@/lib/agents/claude";
+import { getAgentsConfig, probeClaude } from "@/lib/agents/claude";
 import { MIN_CRON_SECRET_LENGTH, getScheduleConfig } from "@/lib/agents/schedule";
 import { getRepository } from "@/lib/data";
 import { getMailConfig, mailWarnings, verifyMail } from "@/lib/mail";
@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
   const overview = getIntegrationsOverview(servedHost);
   const tidycalProbe = await probeTidyCalConnection();
   const agents = getAgentsConfig();
+  const claudeProbe = await probeClaude();
   const dbProbe = isDatabaseConfigured()
     ? await (await import("@/lib/db/mysql")).probeDatabase()
     : null;
@@ -101,11 +102,18 @@ export async function GET(request: NextRequest) {
       ].filter(Boolean),
     },
     agentsIa: {
-      status: agents.configured ? "configured" : "missing",
+      status: !agents.configured ? "missing" : claudeProbe?.ok ? "configured" : "partial",
       model: agents.model,
-      needsFromUser: agents.configured
-        ? []
-        : ["Clé API Claude (ANTHROPIC_API_KEY) — console.anthropic.com → API Keys"],
+      verification: !claudeProbe
+        ? null
+        : claudeProbe.ok
+          ? "Clé vérifiée auprès d'Anthropic (sans frais). Le solde se consulte dans console.anthropic.com → Billing."
+          : claudeProbe.message,
+      needsFromUser: !agents.configured
+        ? ["Clé API Claude (ANTHROPIC_API_KEY) — console.anthropic.com → API Keys"]
+        : claudeProbe?.ok
+          ? []
+          : ["Vérifier la clé API Claude (console.anthropic.com → API Keys)"],
     },
   });
 }

@@ -19,6 +19,51 @@ export function getAgentsConfig() {
   return { apiKey, model, configured: Boolean(apiKey) };
 }
 
+/** Message clair pour une erreur de l'API Claude (jamais la clé). */
+export function describeClaudeError(error: unknown): { message: string; status: number } | null {
+  if (error instanceof Anthropic.AuthenticationError) {
+    return { message: "Clé ANTHROPIC_API_KEY refusée par l'API Claude (clé supprimée ou mal copiée).", status: 502 };
+  }
+  if (error instanceof Anthropic.PermissionDeniedError) {
+    return { message: "Clé ANTHROPIC_API_KEY sans accès à ce modèle ou à cette organisation.", status: 502 };
+  }
+  // Pas de classe dédiée : un solde insuffisant est un 400 dont le message cite le crédit.
+  if (error instanceof Anthropic.BadRequestError && /credit balance/i.test(error.message)) {
+    return {
+      message: "Crédit Anthropic épuisé : rechargez sur console.anthropic.com (Billing). Aucune analyse n'a été facturée.",
+      status: 402,
+    };
+  }
+  if (error instanceof Anthropic.RateLimitError) {
+    return { message: "Limite d'usage de l'API Claude atteinte, réessayez plus tard.", status: 429 };
+  }
+  if (error instanceof Anthropic.APIError) {
+    return { message: `Erreur API Claude (${error.status ?? "réseau"}).`, status: 502 };
+  }
+  return null;
+}
+
+export type ClaudeProbe = { ok: true; model: string } | { ok: false; message: string };
+
+/**
+ * Vérification gratuite de la clé : lecture de la fiche du modèle (aucun
+ * jeton consommé). Ne dit rien du solde, qui ne se lit que dans la console.
+ */
+export async function probeClaude(): Promise<ClaudeProbe | null> {
+  const { apiKey, model, configured } = getAgentsConfig();
+  if (!configured) return null;
+  try {
+    const client = new Anthropic({ apiKey: apiKey ?? undefined, timeout: 10_000, maxRetries: 0 });
+    const info = await client.models.retrieve(model);
+    return { ok: true, model: info.display_name || info.id };
+  } catch (error) {
+    if (error instanceof Anthropic.NotFoundError) {
+      return { ok: false, message: `Modèle « ${model} » inconnu de l'API : vérifiez BOS_AGENTS_MODEL` };
+    }
+    return { ok: false, message: describeClaudeError(error)?.message ?? "API Claude injoignable" };
+  }
+}
+
 export interface AgentProposal {
   resume: string;
   actions: Array<{
@@ -282,15 +327,8 @@ async function analyse(repo: Repository, agent: Agent) {
       ],
     });
   } catch (error) {
-    if (error instanceof Anthropic.AuthenticationError) {
-      throw new AgentRunError("Clé ANTHROPIC_API_KEY refusée par l'API Claude.", 502);
-    }
-    if (error instanceof Anthropic.RateLimitError) {
-      throw new AgentRunError("Limite d'usage de l'API Claude atteinte, réessayez plus tard.", 429);
-    }
-    if (error instanceof Anthropic.APIError) {
-      throw new AgentRunError(`Erreur API Claude (${error.status ?? "réseau"}).`, 502);
-    }
+    const described = describeClaudeError(error);
+    if (described) throw new AgentRunError(described.message, described.status);
     throw error;
   }
 

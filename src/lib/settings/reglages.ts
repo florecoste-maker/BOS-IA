@@ -6,6 +6,7 @@
  * Ce module ne fait que valider et traduire le formulaire en variables
  * `bos-ia.env` ; la route teste ensuite la connexion avant d'enregistrer.
  */
+import { resolveMx } from "node:dns/promises";
 import { isEmail } from "@/lib/mail";
 
 export type Section = "base" | "emails" | "alertes";
@@ -37,11 +38,36 @@ export type Preparation =
 const FOURNISSEURS: Record<string, { host: string; port: string }> = {
   hostinger: { host: "smtp.hostinger.com", port: "465" },
   google: { host: "smtp.gmail.com", port: "587" },
+  microsoft: { host: "smtp.office365.com", port: "587" },
 };
+
+/**
+ * Messagerie d'un domaine d'après ses serveurs MX (« Automatique » dans le
+ * formulaire) : évite à l'utilisateur de savoir qui héberge ses e-mails.
+ */
+export async function detecterFournisseur(
+  adresse: string,
+  resolve: (domaine: string) => Promise<{ exchange: string }[]> = resolveMx,
+): Promise<string | null> {
+  const domaine = adresse.split("@")[1]?.toLowerCase();
+  if (!domaine) return null;
+  try {
+    const mx = (await resolve(domaine)).map((r) => r.exchange.toLowerCase()).join(" ");
+    if (/hostinger/.test(mx)) return "hostinger";
+    if (/google|googlemail/.test(mx)) return "google";
+    if (/outlook\.com|office365/.test(mx)) return "microsoft";
+  } catch {
+    // Domaine sans MX ou DNS indisponible : l'utilisateur choisit à la main.
+  }
+  return null;
+}
 
 const texte = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 /** Mot de passe : gardé tel quel (espaces compris), seuls les retours à la ligne sont refusés. */
-const secret = (v: unknown) => (typeof v === "string" ? v.replace(/^[\r\n]+|[\r\n]+$/g, "") : "");
+/** Mot de passe : espaces en bord retirés (un copier-coller sur iPhone en ajoute parfois). */
+const secret = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+/** Préfixe Hostinger `u123456789_` : l'iPhone met souvent une majuscule au premier caractère. */
+const identifiant = (v: unknown) => texte(v).replace(/^U(\d+_)/, "u$1");
 const HOTE = /^[A-Za-z0-9.-]+$/;
 const NOM_BASE = /^[A-Za-z0-9_$-]{1,64}$/;
 
@@ -49,8 +75,8 @@ export function prepareReglages(form: FormulaireReglages): Preparation {
   const section = form.section;
 
   if (section === "base") {
-    const nom = texte(form.baseNom);
-    const utilisateur = texte(form.baseUtilisateur);
+    const nom = identifiant(form.baseNom);
+    const utilisateur = identifiant(form.baseUtilisateur);
     const motDePasse = secret(form.baseMotDePasse);
     const hote = texte(form.baseHote);
     if (!nom || !utilisateur || !motDePasse) {
@@ -86,7 +112,12 @@ export function prepareReglages(form: FormulaireReglages): Preparation {
       if (!/^\d{2,5}$/.test(port)) return { ok: false, erreur: "Port SMTP invalide (465 ou 587)" };
       serveur = { host, port };
     }
-    if (!serveur) return { ok: false, erreur: "Fournisseur inconnu" };
+    if (!serveur) {
+      return {
+        ok: false,
+        erreur: "Messagerie non reconnue automatiquement : choisissez Hostinger, Google, Microsoft ou « Autre serveur »",
+      };
+    }
 
     return {
       ok: true,

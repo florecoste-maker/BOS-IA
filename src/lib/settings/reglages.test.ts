@@ -5,20 +5,20 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { loadPersistentEnv, writeEnvVariables } from "../env-files";
 import { getMailConfig } from "../mail";
-import { prepareReglages } from "./reglages";
+import { detecterFournisseur, prepareReglages } from "./reglages";
 
 describe("Réglages du serveur saisis dans le cockpit", () => {
   it("base : traduit les trois valeurs hPanel, hôte laissé au test de connexion", () => {
     const r = prepareReglages({
       section: "base",
-      baseNom: " u123_bosia ",
-      baseUtilisateur: "u123_bos",
+      baseNom: " U123_bosia ",
+      baseUtilisateur: "U123_bos",
       baseMotDePasse: " mot de passe#1 ",
     });
     assert.deepEqual(r, {
       ok: true,
       section: "base",
-      variables: { DB_NAME: "u123_bosia", DB_USER: "u123_bos", DB_PASSWORD: " mot de passe#1 " },
+      variables: { DB_NAME: "u123_bosia", DB_USER: "u123_bos", DB_PASSWORD: "mot de passe#1" },
     });
   });
 
@@ -76,6 +76,17 @@ describe("Réglages du serveur saisis dans le cockpit", () => {
     assert.ok(autre.ok);
     assert.equal(autre.variables.SMTP_FROM, "Agence x <a@b.fr>");
     assert.equal(prepareReglages({ section: "emails", adresse: "pas-une-adresse", motDePasse: "x" }).ok, false);
+  });
+
+  it("e-mails : messagerie détectée d'après les MX du domaine", async () => {
+    const mx = (exchange: string) => async () => [{ exchange }];
+    assert.equal(await detecterFournisseur("a@jamaliance.com", mx("mx1.hostinger.com")), "hostinger");
+    assert.equal(await detecterFournisseur("a@x.fr", mx("ASPMX.L.GOOGLE.COM")), "google");
+    assert.equal(await detecterFournisseur("a@x.fr", mx("x-fr.mail.protection.outlook.com")), "microsoft");
+    assert.equal(await detecterFournisseur("a@x.fr", mx("mx.ovh.net")), null);
+    assert.equal(await detecterFournisseur("a@x.fr", async () => Promise.reject(new Error("ENOTFOUND"))), null);
+    const inconnu = prepareReglages({ section: "emails", fournisseur: "inconnu", adresse: "a@x.fr", motDePasse: "p" });
+    assert.equal(inconnu.ok, false);
   });
 
   it("alertes et section inconnue", () => {

@@ -4,7 +4,7 @@
  * workflow GitHub rouge, et GitHub prévient le propriétaire du dépôt par e-mail :
  * l'alerte part même si le site ne peut plus envoyer d'e-mails lui-même.
  */
-import { getAgentsConfig } from "@/lib/agents/claude";
+import { probeClaude } from "@/lib/agents/claude";
 import { getScheduleConfig } from "@/lib/agents/schedule";
 import { getAlertAddress } from "@/lib/alerts";
 import { getRepository } from "@/lib/data";
@@ -38,11 +38,32 @@ export async function runHealthChecks(now = Date.now()): Promise<{ ok: boolean; 
     });
   }
 
+  const claude = await probeClaude();
   checks.push(
-    getAgentsConfig().configured
-      ? { nom: "Agents IA", statut: "ok", message: "Clé API Claude présente" }
-      : { nom: "Agents IA", statut: "attention", message: "ANTHROPIC_API_KEY absente" },
+    !claude
+      ? { nom: "Agents IA", statut: "attention", message: "ANTHROPIC_API_KEY absente" }
+      : claude.ok
+        ? { nom: "Agents IA", statut: "ok", message: `Clé API Claude valide (${claude.model})` }
+        : { nom: "Agents IA", statut: "erreur", message: claude.message },
   );
+
+  // Dernières analyses (manuelles ou planifiées) : statut et erreur seulement, jamais le contenu.
+  const recent = await (await getRepository()).getAgentRuns(20).catch(() => []);
+  if (recent.length) {
+    const echecs = recent.filter((r) => r.statut === "echec");
+    const reussies = recent.filter((r) => r.statut === "succes");
+    const dernier = recent.find((r) => r.statut !== "ignore") ?? recent[0];
+    checks.push({
+      nom: "Analyses IA récentes",
+      statut: dernier.statut === "echec" ? "attention" : "ok",
+      message:
+        `${reussies.length} réussie(s), ${echecs.length} en échec sur les ${recent.length} dernières` +
+        ` ; la plus récente (${dernier.debut.slice(0, 16).replace("T", " ")} UTC) : ` +
+        (dernier.statut === "echec" ? `échec — ${dernier.message}` : dernier.statut === "succes" ? "réussie" : "ignorée"),
+    });
+  } else {
+    checks.push({ nom: "Analyses IA récentes", statut: "ok", message: "Aucune analyse lancée depuis le dernier démarrage" });
+  }
 
   const mail = getMailConfig();
   if (!mail) {

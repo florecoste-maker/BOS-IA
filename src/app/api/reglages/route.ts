@@ -5,7 +5,7 @@ import { checkDatabase } from "@/lib/db/connection-test";
 import { writeEnvVariables } from "@/lib/env-files";
 import { getMailConfig, mailWarnings, verifyMail } from "@/lib/mail";
 import { getActor } from "@/lib/session";
-import { prepareReglages, type FormulaireReglages } from "@/lib/settings/reglages";
+import { detecterFournisseur, prepareReglages, type FormulaireReglages } from "@/lib/settings/reglages";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +26,9 @@ export async function POST(request: Request) {
   }
 
   const form = (await request.json().catch(() => ({}))) as FormulaireReglages;
+  if (form.section === "emails" && (!form.fournisseur || form.fournisseur === "auto") && typeof form.adresse === "string") {
+    form.fournisseur = (await detecterFournisseur(form.adresse.trim())) ?? "inconnu";
+  }
   const prep = prepareReglages(form);
   if (!prep.ok) return NextResponse.json({ error: prep.erreur }, { status: 400 });
   const variables = { ...prep.variables };
