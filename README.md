@@ -5,8 +5,12 @@
 | Couche | URL | Hébergement |
 |--------|-----|-------------|
 | Vitrine publique | [jamaliance.com](https://jamaliance.com) | Hostinger Horizons (**ne pas remplacer**) |
-| Moteur BOS-IA | [app.jamaliance.com](https://app.jamaliance.com) | Hostinger Web App Node.js (en ligne) |
+| Moteur BOS-IA (cockpit : [app.jamaliance.com/app](https://app.jamaliance.com/app)) | [app.jamaliance.com](https://app.jamaliance.com) | Hostinger Web App Node.js, reconstruite à chaque fusion sur `main` |
 | Rendez-vous clients | [jamaliance.com/reservation](https://jamaliance.com/reservation) | Horizons + TidyCal (déjà en ligne) |
+
+`bos.jamaliance.com` est une **ancienne adresse abandonnée** (site Hostinger qui ne
+se met plus à jour) : elle n'est plus jamais affichée, même si `NEXT_PUBLIC_APP_URL`
+la désigne encore dans hPanel (`cockpitBaseUrl()` dans `src/lib/brand.ts`).
 
 ## Ce qui existe déjà
 

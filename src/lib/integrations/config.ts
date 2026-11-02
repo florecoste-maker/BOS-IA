@@ -4,7 +4,7 @@
  * Les URLs publiques ont des valeurs par défaut Jamaliance : le moteur
  * fonctionne sur Hostinger sans aucune variable d'environnement à saisir.
  */
-import { brand } from "@/lib/brand";
+import { brand, cockpitBaseUrl } from "@/lib/brand";
 
 /** Calendrier TidyCal déjà utilisé sur jamaliance.com/reservation. */
 export const DEFAULT_TIDYCAL_URL = "https://tidycal.com/m4g6pv9/jamaliance";
@@ -73,7 +73,7 @@ export function getTidyCalServerConfig(): TidyCalServerConfig {
 export function getHostingerPublicConfig(): HostingerPublicConfig {
   return {
     siteUrl: trimOrNull(process.env.NEXT_PUBLIC_JAMALIANCE_SITE_URL) ?? brand.siteUrl,
-    appUrl: trimOrNull(process.env.NEXT_PUBLIC_APP_URL) ?? brand.appUrl,
+    appUrl: cockpitBaseUrl(),
   };
 }
 
