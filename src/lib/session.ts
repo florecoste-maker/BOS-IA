@@ -9,7 +9,9 @@ import { getRepository } from "@/lib/data";
 export interface Actor {
   id: string;
   nom: string;
-  role: "admin" | "membre";
+  role: "admin" | "membre" | "client";
+  /** Espace d'un compte client (lu en base). */
+  clientId?: string;
   secours: boolean;
 }
 
@@ -26,7 +28,15 @@ export async function resolveActor(identity: SessionIdentity | null): Promise<Ac
   }
   const user = await (await getRepository()).findUserById(identity.uid);
   if (!user || !user.actif) return null;
-  return { id: user.id, nom: user.nom, role: user.role, secours: false };
+  // Compte client sans espace : refusé (jamais d'accès « par défaut » à toutes les données).
+  if (user.role === "client" && !user.clientId) return null;
+  return {
+    id: user.id,
+    nom: user.nom,
+    role: user.role,
+    ...(user.role === "client" ? { clientId: user.clientId } : {}),
+    secours: false,
+  };
 }
 
 export async function getActor(): Promise<Actor | null> {

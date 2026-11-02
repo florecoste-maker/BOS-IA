@@ -12,6 +12,8 @@ export default async function AppShellLayout({
   const actor = await getActor();
   // Seconde barrière après le proxy : compte désactivé ou session invalide.
   if (!actor) redirect("/login");
+  // Un compte client n'entre jamais dans le cockpit de l'agence.
+  if (actor.role === "client") redirect("/espace");
   return (
     <div className="min-h-screen">
       <AppNav user={actor ? { nom: actor.nom, admin: actor.role === "admin" } : null} />

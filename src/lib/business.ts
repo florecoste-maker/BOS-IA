@@ -6,6 +6,8 @@
 import type {
   Client,
   ClientStatus,
+  Contact,
+  ContactCategory,
   Invoice,
   InvoiceRecurrence,
   InvoiceStatus,
@@ -14,6 +16,9 @@ import type {
   MissionType,
   Payment,
   PaymentMode,
+  Quote,
+  QuoteLine,
+  QuoteStatus,
 } from "./types";
 
 export const CLIENT_STATUSES = ["prospect", "actif", "inactif", "perdu"] as const satisfies readonly ClientStatus[];
@@ -54,6 +59,27 @@ export const PAYMENT_MODES = [
   "paypal",
   "autre",
 ] as const satisfies readonly PaymentMode[];
+
+export const CONTACT_CATEGORIES = [
+  "interlocuteur",
+  "client",
+  "prospect",
+  "fournisseur",
+  "autre",
+] as const satisfies readonly ContactCategory[];
+export const QUOTE_STATUSES = [
+  "brouillon",
+  "envoye",
+  "accepte",
+  "refuse",
+  "expire",
+  "facture",
+] as const satisfies readonly QuoteStatus[];
+/** Statuts qu'on choisit à la main ; « expiré » se déduit de la date, « facturé » de la conversion. */
+export const MANUAL_QUOTE_STATUSES = ["brouillon", "envoye", "accepte", "refuse"] as const;
+export const MAX_QUOTE_LINES = 50;
+/** Validité d'un devis par défaut (jours). */
+export const QUOTE_VALIDITY_DAYS = 30;
 
 export const DEFAULT_TVA = 20;
 
@@ -155,6 +181,75 @@ export function paymentProblem(invoice: Invoice, montant: number): string | null
   if (montant > invoice.resteDu + CENT) {
     return `Montant supérieur au reste dû (${invoice.resteDu.toFixed(2).replace(".", ",")} €)`;
   }
+  return null;
+}
+
+/* ---------- devis ---------- */
+
+/** Devis tel qu'enregistré ; totaux, nom du client et expiration se calculent à la lecture. */
+export interface QuoteRecord {
+  id: string;
+  numero: string;
+  clientId: string;
+  missionId?: string;
+  objet: string;
+  lignes: QuoteLine[];
+  tauxTva: number;
+  status: QuoteStatus;
+  emisLe: string;
+  valableJusquau: string;
+  factureId?: string;
+  creeLe: string;
+}
+
+export function quoteTotalHT(lignes: QuoteLine[]) {
+  return round2(lignes.reduce((sum, l) => sum + round2(l.quantite * l.prixUnitaireHT), 0));
+}
+
+/** Un devis envoyé dont la date de validité est passée est « expiré ». */
+export function deriveQuote(record: QuoteRecord, client: Pick<Client, "nom"> | undefined, now = today()): Quote {
+  const montantHT = quoteTotalHT(record.lignes);
+  return {
+    ...record,
+    client: client?.nom ?? "Client supprimé",
+    montantHT,
+    montantTTC: ttc(montantHT, record.tauxTva),
+    status: record.status === "envoye" && record.valableJusquau < now ? "expire" : record.status,
+  };
+}
+
+export function deriveQuotes(records: QuoteRecord[], clients: Client[], now = today()): Quote[] {
+  const byId = new Map(clients.map((c) => [c.id, c]));
+  return records.map((r) => deriveQuote(r, byId.get(r.clientId), now));
+}
+
+/** Seul un devis accepté, pas encore facturé, devient une facture. */
+export function quoteToInvoiceProblem(quote: Quote): string | null {
+  if (quote.status === "facture" || quote.factureId) return "Devis déjà facturé";
+  if (quote.status !== "accepte") return "Seul un devis accepté peut être facturé";
+  if (quote.montantHT <= 0) return "Devis sans montant";
+  return null;
+}
+
+/** Facture issue d'un devis accepté : même client, mission, montant et TVA ; échéance à 30 jours. */
+export function invoiceFromQuote(quote: Quote, emiseLe = today()): InvoiceInput {
+  const echeance = new Date(Date.parse(emiseLe) + 30 * 86_400_000).toISOString().slice(0, 10);
+  return {
+    clientId: quote.clientId,
+    missionId: quote.missionId,
+    objet: `${quote.objet} (devis ${quote.numero})`.slice(0, 255),
+    montantHT: quote.montantHT,
+    tauxTva: quote.tauxTva,
+    status: "emise",
+    emiseLe,
+    echeance,
+  };
+}
+
+/** Changement de statut à la main : un devis facturé ne bouge plus. */
+export function quoteStatusProblem(current: QuoteStatus, next: QuoteStatus): string | null {
+  if (current === "facture") return "Devis déjà facturé : statut verrouillé";
+  if (!(MANUAL_QUOTE_STATUSES as readonly string[]).includes(next)) return "Statut non modifiable à la main";
   return null;
 }
 
@@ -360,6 +455,90 @@ export function checkPayment(raw: Raw): Checked<PaymentInput> {
   return done(errors, value);
 }
 
+export interface ContactInput {
+  clientId: string;
+  nom: string;
+  prenom?: string;
+  fonction?: string;
+  email?: string;
+  telephone?: string;
+  categorie: ContactCategory;
+  principal: boolean;
+  notes?: string;
+}
+export type ContactPatch = Partial<Omit<ContactInput, "clientId">>;
+
+export function checkContact(raw: Raw, { partial = false } = {}): Checked<ContactPatch & { clientId?: string }> {
+  const errors: string[] = [];
+  const email = text(raw, "email", "E-mail", 255, errors);
+  if (email && !EMAIL.test(email)) errors.push("E-mail invalide");
+  const principal = raw.principal;
+  if (principal !== undefined && typeof principal !== "boolean") errors.push("Principal invalide");
+  const value = defined({
+    clientId: partial ? undefined : text(raw, "clientId", "Client", 64, errors, true),
+    nom: text(raw, "nom", "Nom", 255, errors, !partial),
+    prenom: text(raw, "prenom", "Prénom", 255, errors),
+    fonction: text(raw, "fonction", "Fonction", 255, errors),
+    email: email?.toLowerCase(),
+    telephone: text(raw, "telephone", "Téléphone", 64, errors),
+    categorie: oneOf(raw, "categorie", "Catégorie", CONTACT_CATEGORIES, errors) ?? (partial ? undefined : "interlocuteur"),
+    principal: typeof principal === "boolean" ? principal : partial ? undefined : false,
+    notes: text(raw, "notes", "Notes", 4000, errors),
+  });
+  if (partial && value.nom === "") errors.push("Nom obligatoire");
+  return done(errors, value);
+}
+
+export interface QuoteInput {
+  clientId: string;
+  missionId?: string;
+  objet: string;
+  lignes: QuoteLine[];
+  tauxTva: number;
+  status: "brouillon" | "envoye";
+  emisLe: string;
+  valableJusquau: string;
+}
+
+export function checkQuote(raw: Raw): Checked<QuoteInput> {
+  const errors: string[] = [];
+  const emisLe = date(raw, "emisLe", "Date du devis", errors) || today();
+  const valable =
+    date(raw, "valableJusquau", "Validité", errors) ||
+    new Date(Date.parse(emisLe) + QUOTE_VALIDITY_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const tva = amount(raw, "tauxTva", "Taux de TVA", errors);
+  if (tva !== undefined && tva > 100) errors.push("Taux de TVA invalide");
+  const lignes: QuoteLine[] = [];
+  if (!Array.isArray(raw.lignes) || raw.lignes.length === 0) errors.push("Au moins une ligne");
+  else if (raw.lignes.length > MAX_QUOTE_LINES) errors.push(`${MAX_QUOTE_LINES} lignes maximum`);
+  else {
+    raw.lignes.forEach((line, i) => {
+      const l = (line ?? {}) as Raw;
+      const lineErrors: string[] = [];
+      const designation = text(l, "designation", "Désignation", 255, lineErrors, true);
+      const quantite = amount(l, "quantite", "Quantité", lineErrors, { positive: true });
+      const prix = amount(l, "prixUnitaireHT", "Prix unitaire HT", lineErrors);
+      if (quantite === undefined && !lineErrors.some((e) => e.startsWith("Quantité"))) lineErrors.push("Quantité obligatoire");
+      if (prix === undefined && !lineErrors.some((e) => e.startsWith("Prix"))) lineErrors.push("Prix unitaire HT obligatoire");
+      if (lineErrors.length) errors.push(`Ligne ${i + 1} : ${lineErrors.join(", ")}`);
+      else lignes.push({ designation: designation!, quantite: quantite!, prixUnitaireHT: prix! });
+    });
+  }
+  const value: QuoteInput = {
+    clientId: text(raw, "clientId", "Client", 64, errors, true) ?? "",
+    missionId: text(raw, "missionId", "Mission", 64, errors) || undefined,
+    objet: text(raw, "objet", "Objet", 255, errors, true) ?? "",
+    lignes,
+    tauxTva: tva ?? DEFAULT_TVA,
+    status: oneOf(raw, "status", "Statut", ["brouillon", "envoye"] as const, errors) ?? "brouillon",
+    emisLe,
+    valableJusquau: valable,
+  };
+  if (value.valableJusquau < value.emisLe) errors.push("La validité précède la date du devis");
+  if (lignes.length && quoteTotalHT(lignes) <= 0) errors.push("Montant total nul");
+  return done(errors, value);
+}
+
 /* ---------- résultats des écritures ---------- */
 
 export type WriteResult<T> = { ok: true; value: T } | { ok: false; error: string; status: number };
@@ -371,4 +550,9 @@ export function failure(error: string, status = 400): { ok: false; error: string
 /** Mission rattachée à ce client ? (une facture ne peut pas viser la mission d'un autre client) */
 export function missionBelongs(mission: Mission | undefined, clientId: string) {
   return Boolean(mission && mission.clientId === clientId);
+}
+
+/** Un seul interlocuteur principal par espace : les autres perdent ce rôle. */
+export function withSinglePrincipal(contacts: Contact[], principalId: string): Contact[] {
+  return contacts.map((c) => (c.clientId === contacts.find((x) => x.id === principalId)?.clientId ? { ...c, principal: c.id === principalId } : c));
 }

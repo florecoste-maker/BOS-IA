@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { accessFor } from "@/lib/access";
 import { SESSION_COOKIE, getAuthConfig, verifySessionToken } from "@/lib/auth";
 import { retryPersistentEnv } from "@/lib/env-files";
 import { resolveActor } from "@/lib/session";
@@ -16,16 +17,6 @@ const PUBLIC_API = [
   "/api/sauvegarde",
   "/api/installation",
   "/api/installation/terminer",
-];
-
-/** Réservé aux administrateurs : comptes, journal, e-mail de test, réglages du serveur. */
-const ADMIN_PATHS = [
-  "/app/utilisateurs",
-  "/app/journal",
-  "/api/utilisateurs",
-  "/api/journal",
-  "/api/integrations/test-email",
-  "/api/reglages",
 ];
 
 export async function proxy(request: NextRequest) {
@@ -56,14 +47,17 @@ export async function proxy(request: NextRequest) {
   // perd l'accès immédiatement (lecture par clé primaire, sans cache).
   const actor = await resolveActor(verifySessionToken(token));
   if (actor) {
-    if (actor.role !== "admin" && ADMIN_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
-      if (isApi) return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-      const home = request.nextUrl.clone();
-      home.pathname = "/app";
-      home.search = "";
-      return NextResponse.redirect(home);
+    // Rôle et espace relus en base : un compte client ne sort jamais de son espace.
+    const decision = accessFor(pathname, actor);
+    if (decision.kind === "allow") return NextResponse.next();
+    if (decision.kind === "deny") {
+      if (isApi) return NextResponse.json({ error: decision.message }, { status: decision.status });
+      return new NextResponse(decision.message, { status: decision.status });
     }
-    return NextResponse.next();
+    const home = request.nextUrl.clone();
+    home.pathname = decision.to;
+    home.search = "";
+    return NextResponse.redirect(home);
   }
 
   if (isApi) {
@@ -76,5 +70,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app", "/app/:path*", "/api/:path*"],
+  matcher: ["/app", "/app/:path*", "/espace", "/espace/:path*", "/api/:path*"],
 };

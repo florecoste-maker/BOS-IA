@@ -96,6 +96,48 @@ describe("Données de démonstration de l'agence", () => {
     }
   });
 
+  it("garde un seul interlocuteur principal par entreprise", () => {
+    const added = store.createContact({ clientId: "cli-001", nom: "Nouveau", categorie: "interlocuteur", principal: true });
+    assert.ok(added.ok);
+    const principals = store.getContacts().filter((c) => c.clientId === "cli-001" && c.principal);
+    assert.equal(principals.length, 1);
+    assert.equal(principals[0].nom, "Nouveau");
+    assert.ok(store.getContacts().some((c) => c.clientId === "cli-002" && c.principal), "autre entreprise inchangée");
+    assert.equal(store.createContact({ clientId: "inconnu", nom: "x", categorie: "autre", principal: false }).ok, false);
+  });
+
+  it("devis : envoyé, accepté, facturé une seule fois", () => {
+    const created = store.createQuote({
+      clientId: "cli-004",
+      objet: "Secrétaire IA",
+      lignes: [
+        { designation: "Mise en place", quantite: 1, prixUnitaireHT: 1500 },
+        { designation: "Abonnement mensuel", quantite: 3, prixUnitaireHT: 99.9 },
+      ],
+      tauxTva: 20,
+      status: "envoye",
+      emisLe: "2026-10-01",
+      valableJusquau: "2099-12-31",
+    });
+    assert.ok(created.ok);
+    if (!created.ok) return;
+    assert.match(created.value.numero, /^DEV-2026-\d{4}$/);
+    assert.equal(created.value.montantHT, 1799.7);
+    assert.equal(created.value.montantTTC, 2159.64);
+    assert.equal(store.invoiceQuote(created.value.id).ok, false, "pas encore accepté");
+    assert.ok(store.updateQuoteStatus(created.value.id, "accepte").ok);
+    const invoiced = store.invoiceQuote(created.value.id);
+    assert.ok(invoiced.ok);
+    if (invoiced.ok) {
+      assert.equal(invoiced.value.quote.status, "facture");
+      assert.equal(invoiced.value.invoice.montantHT, 1799.7);
+      assert.equal(invoiced.value.invoice.clientId, "cli-004");
+      assert.equal(invoiced.value.invoice.status, "emise");
+    }
+    assert.equal(store.invoiceQuote(created.value.id).ok, false, "une seule facture");
+    assert.equal(store.updateQuoteStatus(created.value.id, "refuse").ok, false, "devis facturé verrouillé");
+  });
+
   it("exige HITL pour actions à risque", () => {
     const pending = store.getAgentActions().find((a) => a.hitlStatus === "pending");
     assert.ok(pending);

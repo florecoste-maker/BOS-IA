@@ -83,7 +83,9 @@ describe("Alertes", () => {
     const before = sink.mails.length;
     const backup = await buildBackup(await getRepository());
     assert.equal(backup.format, "bos-ia-sauvegarde");
-    assert.equal(backup.version, 2);
+    assert.equal(backup.version, 3);
+    assert.equal(backup.totaux.devis, backup.donnees.devis.length);
+    assert.equal(backup.totaux.contacts, backup.donnees.contacts.length);
     assert.equal(backup.totaux.clients, backup.donnees.clients.length);
     assert.equal(backup.totaux.paiements, backup.donnees.paiements.length);
     const gz = gzipBackup(backup);

@@ -3,7 +3,6 @@ import { audit } from "@/lib/audit";
 import { getRepository } from "@/lib/data";
 import { isEmail } from "@/lib/mail";
 import { getActor } from "@/lib/session";
-import type { User } from "@/lib/types";
 import { hashPassword, passwordProblem } from "@/lib/users/password";
 
 export const dynamic = "force-dynamic";
@@ -28,25 +27,37 @@ export async function POST(request: Request) {
     email?: string;
     nom?: string;
     role?: string;
+    clientId?: string;
     motDePasse?: string;
   };
   const email = body.email?.trim().toLowerCase() ?? "";
   const nom = body.nom?.trim() ?? "";
-  const role = body.role === "admin" ? "admin" : body.role === "membre" ? "membre" : null;
+  const role = body.role === "admin" || body.role === "membre" || body.role === "client" ? body.role : null;
   if (!isEmail(email)) return NextResponse.json({ error: "Adresse e-mail invalide" }, { status: 400 });
   if (!nom || nom.length > 120) return NextResponse.json({ error: "Nom requis (120 caractères maximum)" }, { status: 400 });
-  if (!role) return NextResponse.json({ error: "Rôle : admin ou membre" }, { status: 400 });
+  if (!role) return NextResponse.json({ error: "Rôle : admin, membre ou client" }, { status: 400 });
   const problem = passwordProblem(body.motDePasse ?? "");
   if (problem) return NextResponse.json({ error: problem }, { status: 400 });
 
-  const user = await (await getRepository()).createUser({
+  const repo = await getRepository();
+  // Un compte client est rattaché à une entreprise existante, une fois pour toutes.
+  let client: { id: string; nom: string } | undefined;
+  if (role === "client") {
+    client = (await repo.getClients()).find((c) => c.id === body.clientId);
+    if (!client) return NextResponse.json({ error: "Choisissez l'entreprise du compte client" }, { status: 400 });
+  }
+  const user = await repo.createUser({
     email,
     nom,
     role,
+    ...(client ? { clientId: client.id } : {}),
     passwordHash: await hashPassword(body.motDePasse!),
   });
   if (!user) return NextResponse.json({ error: "Un compte existe déjà avec cet e-mail" }, { status: 409 });
-  await audit(actor, "compte_cree", `${nom} <${email}>`, { details: { role }, request });
+  await audit(actor, "compte_cree", `${nom} <${email}>`, {
+    details: client ? { role, espace: client.nom } : { role },
+    request,
+  });
   return NextResponse.json({ user }, { status: 201 });
 }
 
@@ -65,7 +76,14 @@ export async function PATCH(request: Request) {
   const target = body.id ? await repo.findUserById(body.id) : null;
   if (!target) return NextResponse.json({ error: "Compte introuvable" }, { status: 404 });
 
-  const role = body.role === "admin" || body.role === "membre" ? (body.role as User["role"]) : undefined;
+  const role = body.role === "admin" || body.role === "membre" ? body.role : undefined;
+  // Un compte client reste client, un compte de l'équipe ne devient jamais client.
+  if (target.role === "client" && body.role !== undefined && body.role !== "client") {
+    return NextResponse.json({ error: "Un compte client ne peut pas devenir un compte de l'équipe" }, { status: 400 });
+  }
+  if (target.role !== "client" && body.role === "client") {
+    return NextResponse.json({ error: "Créez un compte client distinct, rattaché à son entreprise" }, { status: 400 });
+  }
   const actif = typeof body.actif === "boolean" ? body.actif : undefined;
   const nom = body.nom?.trim() || undefined;
   const losesAdmin = target.role === "admin" && target.actif && (role === "membre" || actif === false);

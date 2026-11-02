@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { StatusPill } from "@/components/ui";
-import { CLIENT_STATUSES, MISSION_STATUSES, MISSION_TYPES } from "@/lib/business";
-import { formatDate, formatMoney, missionTypeLabel, statusLabel } from "@/lib/format";
-import type { Client, Mission } from "@/lib/types";
+import { CLIENT_STATUSES, CONTACT_CATEGORIES, MISSION_STATUSES, MISSION_TYPES } from "@/lib/business";
+import { CONTACT_CATEGORY_LABELS, formatDate, formatMoney, missionTypeLabel, statusLabel } from "@/lib/format";
+import type { Client, Contact, Mission } from "@/lib/types";
 
 /** 16 px : Safari sur iPhone ne zoome pas à la saisie. */
 const input = "mt-1 block w-full border border-line bg-surface px-2 py-1.5 text-base";
@@ -29,6 +29,7 @@ function missionTone(statut: Mission["statut"]) {
 type Form = Record<string, string>;
 
 const emptyClient: Form = { nom: "", contact: "", email: "", telephone: "", secteur: "", statut: "prospect", source: "", notes: "" };
+const emptyContact: Form = { prenom: "", nom: "", fonction: "", email: "", telephone: "", categorie: "interlocuteur", notes: "" };
 const emptyMission: Form = { titre: "", type: "agent_ia", statut: "proposition", montantHT: "", debut: "", fin: "", notes: "" };
 
 function Field({
@@ -135,6 +136,49 @@ function MissionFields({ form, set }: { form: Form; set: (f: Form) => void }) {
   );
 }
 
+const contactCategoryOptions = CONTACT_CATEGORIES.map((c) => [c, CONTACT_CATEGORY_LABELS[c]] as [string, string]);
+
+function ContactFields({ form, set }: { form: Form; set: (f: Form) => void }) {
+  const on = (key: string) => (v: string) => set({ ...form, [key]: v });
+  return (
+    <>
+      <Field label="Prénom" value={form.prenom} onChange={on("prenom")} />
+      <Field label="Nom" required value={form.nom} onChange={on("nom")} />
+      <Field label="Fonction" value={form.fonction} onChange={on("fonction")} />
+      <Select label="Catégorie" value={form.categorie} onChange={on("categorie")} options={contactCategoryOptions} />
+      <Field label="E-mail" type="email" value={form.email} onChange={on("email")} />
+      <Field label="Téléphone" type="tel" value={form.telephone} onChange={on("telephone")} />
+      <label className="flex items-center gap-2 md:col-span-2">
+        <input
+          type="checkbox"
+          checked={form.principal === "oui"}
+          onChange={(e) => on("principal")(e.target.checked ? "oui" : "")}
+          className="h-5 w-5"
+        />
+        <span>Interlocuteur principal de Jamaliance</span>
+      </label>
+      <label className="block md:col-span-2">
+        <span className="font-medium">Notes</span>
+        <textarea value={form.notes} onChange={(e) => on("notes")(e.target.value)} rows={2} className={input} />
+      </label>
+    </>
+  );
+}
+
+const contactToForm = (c: Contact): Form => ({
+  prenom: c.prenom ?? "",
+  nom: c.nom,
+  fonction: c.fonction ?? "",
+  email: c.email ?? "",
+  telephone: c.telephone ?? "",
+  categorie: c.categorie,
+  principal: c.principal ? "oui" : "",
+  notes: c.notes ?? "",
+});
+
+/** Formulaire → corps JSON (case « principal » en booléen). */
+const contactBody = (f: Form) => ({ ...f, principal: f.principal === "oui" });
+
 const toForm = (c: Client): Form => ({
   nom: c.nom,
   contact: c.contact ?? "",
@@ -158,13 +202,18 @@ const missionToForm = (m: Mission): Form => ({
 
 export function ClientsClient({
   initialClients,
+  initialContacts,
   initialMissions,
 }: {
   initialClients: Client[];
+  initialContacts: Contact[];
   initialMissions: Mission[];
 }) {
   const [clients, setClients] = useState(initialClients);
+  const [contacts, setContacts] = useState(initialContacts);
   const [missions, setMissions] = useState(initialMissions);
+  const [contactFor, setContactFor] = useState<{ clientId: string; form: Form } | null>(null);
+  const [contactEdit, setContactEdit] = useState<{ id: string; form: Form } | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
   // Indicateurs calculés côté serveur : rechargés après chaque saisie.
@@ -179,6 +228,7 @@ export function ClientsClient({
   async function refresh() {
     const data = await fetch("/api/clients").then((r) => r.json());
     setClients(data.clients);
+    setContacts(data.contacts);
     setMissions(data.missions);
   }
 
@@ -332,6 +382,15 @@ export function ClientsClient({
                     type="button"
                     className={small}
                     onClick={() =>
+                      setContactFor(contactFor?.clientId === client.id ? null : { clientId: client.id, form: emptyContact })
+                    }
+                  >
+                    {contactFor?.clientId === client.id ? "Annuler le contact" : "+ Contact"}
+                  </button>
+                  <button
+                    type="button"
+                    className={small}
+                    onClick={() =>
                       setMissionFor(missionFor?.clientId === client.id ? null : { clientId: client.id, form: emptyMission })
                     }
                   >
@@ -356,6 +415,87 @@ export function ClientsClient({
                       </button>
                     </div>
                   </form>
+                ) : null}
+
+                {contactFor?.clientId === client.id ? (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      send(
+                        "/api/contacts",
+                        "POST",
+                        { clientId: client.id, ...contactBody(contactFor.form) },
+                        `Contact « ${[contactFor.form.prenom, contactFor.form.nom].filter(Boolean).join(" ").trim()} » ajouté`,
+                        () => setContactFor(null),
+                      );
+                    }}
+                    className="mt-4 grid max-w-3xl gap-4 border border-line bg-surface p-4 md:grid-cols-2"
+                  >
+                    <h3 className="font-display text-lg font-semibold md:col-span-2">Nouveau contact — {client.nom}</h3>
+                    <ContactFields form={contactFor.form} set={(form) => setContactFor({ clientId: client.id, form })} />
+                    <div className="md:col-span-2">
+                      <button type="submit" disabled={pending} className={button}>
+                        Ajouter le contact
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+
+                {contacts.some((c) => c.clientId === client.id) ? (
+                  <ul className="mt-4 space-y-2 border-l-2 border-nexus/30 pl-4">
+                    {contacts
+                      .filter((c) => c.clientId === client.id)
+                      .map((contact) => (
+                        <li key={contact.id}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-medium text-ink">
+                              {[contact.prenom, contact.nom].filter(Boolean).join(" ")}
+                              {contact.fonction ? <span className="font-normal text-ink-muted"> · {contact.fonction}</span> : null}
+                            </p>
+                            <span className="text-xs text-ink-muted">
+                              {contact.principal ? "★ Principal · " : ""}
+                              {CONTACT_CATEGORY_LABELS[contact.categorie]}
+                            </span>
+                          </div>
+                          <p className="text-ink-muted">
+                            {contact.email ? (
+                              <a href={`mailto:${contact.email}`} className="text-brand hover:text-brand-deep">
+                                {contact.email}
+                              </a>
+                            ) : null}
+                            {contact.email && contact.telephone ? " · " : ""}
+                            {contact.telephone ?? ""}
+                            <button
+                              type="button"
+                              className="ml-2 text-xs font-semibold text-brand hover:text-brand-deep"
+                              onClick={() =>
+                                setContactEdit(contactEdit?.id === contact.id ? null : { id: contact.id, form: contactToForm(contact) })
+                              }
+                            >
+                              {contactEdit?.id === contact.id ? "Annuler" : "Modifier"}
+                            </button>
+                          </p>
+                          {contactEdit?.id === contact.id ? (
+                            <form
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                send("/api/contacts", "PATCH", { id: contact.id, ...contactBody(contactEdit.form) }, "Contact enregistré", () =>
+                                  setContactEdit(null),
+                                );
+                              }}
+                              className="mt-3 grid max-w-3xl gap-4 border border-line bg-surface p-4 md:grid-cols-2"
+                            >
+                              <ContactFields form={contactEdit.form} set={(form) => setContactEdit({ id: contact.id, form })} />
+                              <div className="md:col-span-2">
+                                <button type="submit" disabled={pending} className={button}>
+                                  Enregistrer
+                                </button>
+                              </div>
+                            </form>
+                          ) : null}
+                        </li>
+                      ))}
+                  </ul>
                 ) : null}
 
                 {missionFor?.clientId === client.id ? (

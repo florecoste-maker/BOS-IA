@@ -6,11 +6,11 @@ import { getActor } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-/** Clients et missions (fiche client du cockpit). */
+/** Clients, contacts et missions (fiche client du cockpit). */
 export async function GET() {
   const repo = await getRepository();
-  const [clients, missions] = await Promise.all([repo.getClients(), repo.getMissions()]);
-  return NextResponse.json({ clients, missions });
+  const [clients, contacts, missions] = await Promise.all([repo.getClients(), repo.getContacts(), repo.getMissions()]);
+  return NextResponse.json({ clients, contacts, missions });
 }
 
 /** Nouveau client (ou prospect). */

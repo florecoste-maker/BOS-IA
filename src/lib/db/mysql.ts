@@ -11,7 +11,13 @@ import { editedOperation } from "@/lib/actions/operations";
 import { STALE_EXECUTION_MS, cleanEdits } from "@/lib/actions/rules";
 import {
   type InvoiceRecord,
+  type QuoteRecord,
   deriveInvoice,
+  deriveQuote,
+  deriveQuotes,
+  invoiceFromQuote,
+  quoteStatusProblem,
+  quoteToInvoiceProblem,
   deriveInvoices,
   failure,
   missionBelongs,
@@ -29,10 +35,12 @@ import type {
   AgentRunLog,
   AuditEntry,
   Client,
+  Contact,
   EmailDraft,
   Invoice,
   Mission,
   Payment,
+  QuoteLine,
   StatusOperation,
   User,
 } from "@/lib/types";
@@ -52,6 +60,35 @@ export const SCHEMA = [
     notes TEXT NULL,
     cree_le DATETIME(3) NOT NULL,
     derniere_activite DATETIME(3) NOT NULL
+  ) DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS bos_contacts (
+    id VARCHAR(64) PRIMARY KEY,
+    client_id VARCHAR(64) NOT NULL,
+    nom VARCHAR(255) NOT NULL,
+    prenom VARCHAR(255) NULL,
+    fonction VARCHAR(255) NULL,
+    email VARCHAR(255) NULL,
+    telephone VARCHAR(64) NULL,
+    categorie VARCHAR(32) NOT NULL,
+    principal TINYINT(1) NOT NULL DEFAULT 0,
+    notes TEXT NULL,
+    cree_le DATETIME(3) NOT NULL,
+    INDEX idx_bos_contacts_client (client_id)
+  ) DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS bos_devis (
+    id VARCHAR(64) PRIMARY KEY,
+    numero VARCHAR(64) NOT NULL UNIQUE,
+    client_id VARCHAR(64) NOT NULL,
+    mission_id VARCHAR(64) NULL,
+    objet VARCHAR(255) NOT NULL,
+    lignes LONGTEXT NOT NULL,
+    taux_tva DECIMAL(5,2) NOT NULL DEFAULT 20,
+    statut VARCHAR(16) NOT NULL,
+    emis_le DATE NOT NULL,
+    valable_jusquau DATE NOT NULL,
+    facture_id VARCHAR(64) NULL,
+    cree_le DATETIME(3) NOT NULL,
+    INDEX idx_bos_devis_client (client_id)
   ) DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS bos_missions (
     id VARCHAR(64) PRIMARY KEY,
@@ -156,6 +193,7 @@ export const SCHEMA = [
  * pas « ADD COLUMN IF NOT EXISTS » : on vérifie dans information_schema.
  */
 export const MIGRATIONS: Array<{ table: string; column: string; ddl: string }> = [
+  { table: "bos_users", column: "client_id", ddl: "VARCHAR(64) NULL" },
   { table: "bos_agent_actions", column: "email_cible", ddl: "VARCHAR(16) NULL" },
   { table: "bos_agent_actions", column: "email_ref", ddl: "VARCHAR(64) NULL" },
   { table: "bos_agent_actions", column: "email_objet", ddl: "VARCHAR(255) NULL" },
@@ -313,6 +351,50 @@ function toClient(r: Row): Client {
   };
 }
 
+function toContact(r: Row): Contact {
+  return {
+    id: String(r.id),
+    clientId: String(r.client_id),
+    nom: String(r.nom),
+    prenom: opt(r.prenom),
+    fonction: opt(r.fonction),
+    email: opt(r.email),
+    telephone: opt(r.telephone),
+    categorie: r.categorie as Contact["categorie"],
+    principal: Boolean(Number(r.principal)),
+    notes: opt(r.notes),
+    creeLe: fromSqlDateTime(String(r.cree_le)),
+  };
+}
+
+function parseLines(value: unknown): QuoteLine[] {
+  const parsed = typeof value === "string" ? JSON.parse(value) : value;
+  return Array.isArray(parsed)
+    ? parsed.map((l) => ({
+        designation: String(l.designation),
+        quantite: Number(l.quantite),
+        prixUnitaireHT: Number(l.prixUnitaireHT),
+      }))
+    : [];
+}
+
+function toQuoteRecord(r: Row): QuoteRecord {
+  return {
+    id: String(r.id),
+    numero: String(r.numero),
+    clientId: String(r.client_id),
+    missionId: opt(r.mission_id),
+    objet: String(r.objet),
+    lignes: parseLines(r.lignes),
+    tauxTva: Number(r.taux_tva),
+    status: r.statut as QuoteRecord["status"],
+    emisLe: String(r.emis_le),
+    valableJusquau: String(r.valable_jusquau),
+    factureId: opt(r.facture_id),
+    creeLe: fromSqlDateTime(String(r.cree_le)),
+  };
+}
+
 function toMission(r: Row): Mission {
   return {
     id: String(r.id),
@@ -421,6 +503,7 @@ function toUser(r: Row): User {
     email: String(r.email),
     nom: String(r.nom),
     role: r.role as User["role"],
+    ...(r.client_id ? { clientId: String(r.client_id) } : {}),
     actif: Boolean(Number(r.actif)),
     creeLe: fromSqlDateTime(String(r.cree_le)),
     derniereConnexion: r.derniere_connexion ? fromSqlDateTime(String(r.derniere_connexion)) : undefined,
@@ -484,6 +567,24 @@ async function getInvoices() {
   return deriveInvoices(records, clients, payments);
 }
 
+const getContacts = () => select("SELECT * FROM bos_contacts ORDER BY principal DESC, nom", toContact);
+
+async function getQuotes() {
+  const [records, clients] = await Promise.all([
+    select("SELECT * FROM bos_devis ORDER BY emis_le DESC, numero DESC", toQuoteRecord),
+    getClients(),
+  ]);
+  return deriveQuotes(records, clients);
+}
+
+async function findQuote(id: string, conn?: PoolConnection, lock = false) {
+  const record = (
+    await select(`SELECT * FROM bos_devis WHERE id = ?${lock ? " FOR UPDATE" : ""}`, toQuoteRecord, [id], conn)
+  )[0];
+  if (!record) return undefined;
+  return { record, quote: deriveQuote(record, await findClient(record.clientId, conn)) };
+}
+
 async function findClient(id: string, conn?: PoolConnection) {
   return (await select("SELECT * FROM bos_clients WHERE id = ?", toClient, [id], conn))[0];
 }
@@ -523,9 +624,160 @@ async function touchClient(conn: PoolConnection, clientId: string) {
 
 /* ---------- moteur ---------- */
 
+/** Un seul interlocuteur principal par espace. */
+async function keepSinglePrincipal(conn: PoolConnection, contact: Contact) {
+  if (!contact.principal) return;
+  await conn.execute("UPDATE bos_contacts SET principal = 0 WHERE client_id = ? AND id <> ?", [contact.clientId, contact.id]);
+}
+
 export const mysqlRepository: Repository = {
   mode: "mysql",
   getClients,
+  getContacts,
+  getQuotes,
+
+  /** Chaque requête filtre sur client_id : aucune donnée d'un autre espace ne peut remonter. */
+  async getSpace(clientId) {
+    const client = await findClient(clientId);
+    if (!client) return null;
+    const [contacts, missions, quoteRecords, invoiceRecords, payments] = await Promise.all([
+      select("SELECT * FROM bos_contacts WHERE client_id = ? ORDER BY principal DESC, nom", toContact, [clientId]),
+      select("SELECT * FROM bos_missions WHERE client_id = ? ORDER BY cree_le DESC", toMission, [clientId]),
+      select("SELECT * FROM bos_devis WHERE client_id = ? ORDER BY emis_le DESC, numero DESC", toQuoteRecord, [clientId]),
+      select("SELECT * FROM bos_factures WHERE client_id = ? ORDER BY emise_le DESC, numero DESC", toInvoiceRecord, [clientId]),
+      select(
+        `SELECT p.* FROM bos_paiements p JOIN bos_factures f ON f.id = p.facture_id
+         WHERE f.client_id = ? ORDER BY p.date_paiement DESC, p.numero DESC`,
+        toPayment,
+        [clientId],
+      ),
+    ]);
+    return {
+      client,
+      contacts,
+      missions,
+      quotes: deriveQuotes(quoteRecords, [client]),
+      invoices: deriveInvoices(invoiceRecords, [client], payments),
+      payments,
+    };
+  },
+
+  createContact(input) {
+    return transaction(async (conn) => {
+      if (!(await findClient(input.clientId, conn))) return failure("Client introuvable", 404);
+      const id = `con-${randomUUID()}`;
+      await conn.execute(
+        `INSERT INTO bos_contacts
+           (id, client_id, nom, prenom, fonction, email, telephone, categorie, principal, notes, cree_le)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          input.clientId,
+          input.nom,
+          nul(input.prenom),
+          nul(input.fonction),
+          nul(input.email),
+          nul(input.telephone),
+          input.categorie,
+          input.principal ? 1 : 0,
+          nul(input.notes),
+          nowSql(),
+        ],
+      );
+      const contact = (await select("SELECT * FROM bos_contacts WHERE id = ?", toContact, [id], conn))[0];
+      await keepSinglePrincipal(conn, contact);
+      await touchClient(conn, input.clientId);
+      return { ok: true as const, value: contact };
+    });
+  },
+
+  updateContact(id, patch) {
+    return transaction(async (conn) => {
+      const entries = Object.entries(patch)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, k === "principal" ? (v ? 1 : 0) : k === "nom" || k === "categorie" ? v : nul(v as string)] as const);
+      if (entries.length) {
+        const [result] = await conn.execute<mysql.ResultSetHeader>(
+          `UPDATE bos_contacts SET ${entries.map(([c]) => `${c} = ?`).join(", ")} WHERE id = ?`,
+          [...entries.map(([, v]) => v as string | number | null), id],
+        );
+        if (!result.affectedRows) return failure("Contact introuvable", 404);
+      }
+      const contact = (await select("SELECT * FROM bos_contacts WHERE id = ?", toContact, [id], conn))[0];
+      if (!contact) return failure("Contact introuvable", 404);
+      await keepSinglePrincipal(conn, contact);
+      await touchClient(conn, contact.clientId);
+      return { ok: true as const, value: contact };
+    });
+  },
+
+  createQuote(input) {
+    return transaction(async (conn) => {
+      if (!(await findClient(input.clientId, conn))) return failure("Client introuvable", 404);
+      if (input.missionId && !missionBelongs(await findMission(input.missionId, conn), input.clientId)) {
+        return failure("Cette mission n'appartient pas à ce client");
+      }
+      const id = `dev-${randomUUID()}`;
+      const numero = await nextSerial(conn, "bos_devis", "numero", "DEV", Number(input.emisLe.slice(0, 4)));
+      await conn.execute(
+        `INSERT INTO bos_devis
+           (id, numero, client_id, mission_id, objet, lignes, taux_tva, statut, emis_le, valable_jusquau, cree_le)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          numero,
+          input.clientId,
+          input.missionId ?? null,
+          input.objet,
+          JSON.stringify(input.lignes),
+          input.tauxTva,
+          input.status,
+          input.emisLe,
+          input.valableJusquau,
+          nowSql(),
+        ],
+      );
+      await touchClient(conn, input.clientId);
+      return { ok: true as const, value: (await findQuote(id, conn))!.quote };
+    });
+  },
+
+  updateQuoteStatus(id, status) {
+    return transaction(async (conn) => {
+      const found = await findQuote(id, conn, true);
+      if (!found) return failure("Devis introuvable", 404);
+      const problem = quoteStatusProblem(found.record.status, status);
+      if (problem) return failure(problem, 409);
+      await conn.execute("UPDATE bos_devis SET statut = ? WHERE id = ?", [status, id]);
+      return { ok: true as const, value: (await findQuote(id, conn))!.quote };
+    });
+  },
+
+  async invoiceQuote(id) {
+    // Devis verrouillé : un double clic ne crée pas deux factures.
+    const result = await transaction(async (conn) => {
+      const found = await findQuote(id, conn, true);
+      if (!found) return failure("Devis introuvable", 404);
+      const problem = quoteToInvoiceProblem(found.quote);
+      if (problem) return failure(problem, 409);
+      const input = invoiceFromQuote(found.quote);
+      const invoiceId = `inv-${randomUUID()}`;
+      const numero = await nextSerial(conn, "bos_factures", "numero", "FA", Number(input.emiseLe.slice(0, 4)));
+      await conn.execute(
+        `INSERT INTO bos_factures
+           (id, numero, client_id, mission_id, objet, montant_ht, taux_tva, statut, emise_le, echeance)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'emise', ?, ?)`,
+        [invoiceId, numero, input.clientId, input.missionId ?? null, input.objet ?? null, input.montantHT, input.tauxTva, input.emiseLe, input.echeance],
+      );
+      await conn.execute("UPDATE bos_devis SET statut = 'facture', facture_id = ? WHERE id = ?", [invoiceId, id]);
+      await touchClient(conn, input.clientId);
+      return {
+        ok: true as const,
+        value: { quote: (await findQuote(id, conn))!.quote, invoice: (await findInvoice(invoiceId, conn))!.invoice },
+      };
+    });
+    return result;
+  },
   getMissions,
   getInvoices,
   getPayments,
@@ -903,9 +1155,17 @@ export const mysqlRepository: Repository = {
     const id = `usr-${randomUUID()}`;
     try {
       await (await db()).execute(
-        `INSERT INTO bos_users (id, email, nom, role, actif, password_hash, cree_le)
-         VALUES (?, ?, ?, ?, 1, ?, ?)`,
-        [id, input.email.toLowerCase(), input.nom, input.role, input.passwordHash, toSqlDateTime(new Date().toISOString())],
+        `INSERT INTO bos_users (id, email, nom, role, client_id, actif, password_hash, cree_le)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+        [
+          id,
+          input.email.toLowerCase(),
+          input.nom,
+          input.role,
+          input.role === "client" ? (input.clientId ?? null) : null,
+          input.passwordHash,
+          toSqlDateTime(new Date().toISOString()),
+        ],
       );
     } catch (error) {
       if ((error as { code?: string }).code === "ER_DUP_ENTRY") return null;

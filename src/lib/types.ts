@@ -22,6 +22,29 @@ export interface Client {
   derniereActivite: string;
 }
 
+/**
+ * Personne rattachée à l'espace d'une entreprise cliente : interlocuteur chez
+ * le client, ou contact de ce client (ses propres clients, prospects,
+ * fournisseurs), sur lesquels travailleront ses agents IA.
+ */
+export type ContactCategory = "interlocuteur" | "client" | "prospect" | "fournisseur" | "autre";
+
+export interface Contact {
+  id: string;
+  /** Espace (entreprise cliente) auquel appartient le contact. */
+  clientId: string;
+  nom: string;
+  prenom?: string;
+  fonction?: string;
+  email?: string;
+  telephone?: string;
+  categorie: ContactCategory;
+  /** Interlocuteur principal de Jamaliance dans cette entreprise. */
+  principal: boolean;
+  notes?: string;
+  creeLe: string;
+}
+
 /** Nature d'une mission vendue par l'agence. */
 export type MissionType = "agent_ia" | "automatisation" | "conseil" | "abonnement" | "autre";
 
@@ -87,6 +110,36 @@ export interface Invoice {
   payeeLe?: string;
   /** Facture d'abonnement : sert au MRR (montant ramené au mois). */
   recurrence?: InvoiceRecurrence;
+}
+
+/** « expiré » se déduit de la date de validité d'un devis envoyé. */
+export type QuoteStatus = "brouillon" | "envoye" | "accepte" | "refuse" | "expire" | "facture";
+
+export interface QuoteLine {
+  designation: string;
+  quantite: number;
+  prixUnitaireHT: number;
+}
+
+export interface Quote {
+  id: string;
+  /** DEV-AAAA-NNNN */
+  numero: string;
+  clientId: string;
+  /** Nom du client (lu sur la fiche client). */
+  client: string;
+  missionId?: string;
+  objet: string;
+  lignes: QuoteLine[];
+  montantHT: number;
+  tauxTva: number;
+  montantTTC: number;
+  status: QuoteStatus;
+  emisLe: string;
+  valableJusquau: string;
+  /** Facture créée à partir de ce devis. */
+  factureId?: string;
+  creeLe: string;
 }
 
 export type PaymentMode =
@@ -222,7 +275,10 @@ export interface User {
   id: string;
   email: string;
   nom: string;
-  role: "admin" | "membre";
+  /** « client » : compte d'une entreprise cliente, limité à son espace. */
+  role: "admin" | "membre" | "client";
+  /** Espace d'un compte client (fixé à la création, jamais modifiable). */
+  clientId?: string;
   actif: boolean;
   creeLe: string;
   derniereConnexion?: string;

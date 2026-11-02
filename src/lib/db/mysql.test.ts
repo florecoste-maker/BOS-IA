@@ -32,6 +32,8 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
       "bos_audit",
       "bos_users",
       "bos_paiements",
+      "bos_devis",
+      "bos_contacts",
       "bos_factures",
       "bos_missions",
       "bos_clients",
@@ -457,5 +459,82 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
     assert.equal(ko.execution?.statut, "echec");
     assert.match(ko.execution!.message, /Fiche introuvable/);
     assert.doesNotMatch(ko.execution!.message, /SMTP|envoy/i);
+  });
+
+  it("sépare les espaces : contacts, devis, factures et paiements d'un seul client", async () => {
+    const a = await repo.createClient({ nom: "Espace A", statut: "actif", notes: "interne A" });
+    const b = await repo.createClient({ nom: "Espace B", statut: "actif" });
+    assert.ok(a.ok && b.ok);
+    if (!a.ok || !b.ok) return;
+    const ca = await repo.createContact({ clientId: a.value.id, nom: "Alice", categorie: "interlocuteur", principal: true, email: "alice@a.example" });
+    const ca2 = await repo.createContact({ clientId: a.value.id, nom: "Arthur", categorie: "client", principal: false });
+    await repo.createContact({ clientId: b.value.id, nom: "Bruno", categorie: "interlocuteur", principal: true });
+    assert.ok(ca.ok && ca2.ok);
+    if (!ca.ok || !ca2.ok) return;
+    // Nouveau principal : l'ancien perd ce rôle, l'autre espace n'est pas touché.
+    const promoted = await repo.updateContact(ca2.value.id, { principal: true, telephone: "06 00 00 00 00" });
+    assert.ok(promoted.ok);
+    const contacts = await repo.getContacts();
+    assert.deepEqual(contacts.filter((c) => c.clientId === a.value.id && c.principal).map((c) => c.nom), ["Arthur"]);
+    assert.ok(contacts.find((c) => c.nom === "Bruno")?.principal);
+    assert.equal((await repo.updateContact("inconnu", { nom: "x" })).ok, false);
+
+    const lignes = [
+      { designation: "Secrétaire IA — mise en place", quantite: 1, prixUnitaireHT: 1500 },
+      { designation: "Standard téléphonique — mois", quantite: 3, prixUnitaireHT: 99.9 },
+    ];
+    const qa = await repo.createQuote({ clientId: a.value.id, objet: "Secrétaire IA", lignes, tauxTva: 20, status: "envoye", emisLe: iso(2), valableJusquau: iso(-28) });
+    const qb = await repo.createQuote({ clientId: b.value.id, objet: "Devis B", lignes, tauxTva: 20, status: "brouillon", emisLe: iso(2), valableJusquau: iso(-28) });
+    assert.ok(qa.ok && qb.ok);
+    if (!qa.ok || !qb.ok) return;
+    assert.match(qa.value.numero, /^DEV-\d{4}-0001$/);
+    assert.equal(qb.value.numero.endsWith("0002"), true);
+    assert.deepEqual(qa.value.lignes, lignes, "lignes relues à l'identique");
+    assert.equal(qa.value.montantHT, 1799.7);
+    assert.equal(qa.value.montantTTC, 2159.64);
+
+    assert.equal((await repo.invoiceQuote(qa.value.id)).ok, false, "pas encore accepté");
+    assert.ok((await repo.updateQuoteStatus(qa.value.id, "accepte")).ok);
+    const twice = await Promise.all([repo.invoiceQuote(qa.value.id), repo.invoiceQuote(qa.value.id)]);
+    assert.equal(twice.filter((r) => r.ok).length, 1, "double clic : une seule facture");
+    const done = twice.find((r) => r.ok)!;
+    if (!done.ok) return;
+    assert.equal(done.value.quote.status, "facture");
+    assert.equal(done.value.quote.factureId, done.value.invoice.id);
+    assert.equal(done.value.invoice.montantTTC, 2159.64);
+    assert.equal((await repo.updateQuoteStatus(qa.value.id, "refuse")).ok, false, "devis facturé verrouillé");
+    const paid = await repo.recordPayment({ factureId: done.value.invoice.id, montant: 500, date: iso(0), mode: "stripe" });
+    assert.ok(paid.ok);
+    const ib = await repo.createInvoice({ clientId: b.value.id, montantHT: 10, tauxTva: 20, status: "emise", emiseLe: iso(0), echeance: iso(0) });
+    assert.ok(ib.ok);
+    if (ib.ok) await repo.recordPayment({ factureId: ib.value.id, montant: 12, date: iso(0), mode: "paypal" });
+
+    const space = (await repo.getSpace(a.value.id))!;
+    assert.deepEqual(space.contacts.map((c) => c.nom).sort(), ["Alice", "Arthur"]);
+    assert.deepEqual(space.quotes.map((q) => q.objet), ["Secrétaire IA"]);
+    assert.deepEqual(space.invoices.map((i) => i.id), [done.value.invoice.id]);
+    assert.deepEqual(space.payments.map((p) => p.mode), ["stripe"]);
+    assert.equal(JSON.stringify(space).includes("Espace B"), false);
+    assert.equal(JSON.stringify(space).includes("Bruno"), false);
+    assert.equal(await repo.getSpace("inconnu"), null);
+  });
+
+  it("migre les comptes et rattache un compte client à son entreprise", async () => {
+    await conn.query("ALTER TABLE bos_users DROP COLUMN client_id");
+    await reconnect();
+    const a = (await repo.getClients()).find((c) => c.nom === "Espace A")!;
+    const user = await repo.createUser({ email: "portail@a.example", nom: "Portail A", role: "client", clientId: a.id, passwordHash: "scrypt$x" });
+    assert.equal(user?.role, "client");
+    assert.equal(user?.clientId, a.id);
+    const staff = await repo.createUser({ email: "staff@jamaliance.com", nom: "Staff", role: "membre", clientId: a.id, passwordHash: "scrypt$x" });
+    assert.equal(staff?.clientId, undefined, "un compte de l'équipe n'a jamais d'espace");
+    const { resolveActor } = await import("@/lib/session");
+    assert.deepEqual(await resolveActor({ uid: user!.id, role: "client", nom: "Portail A" }), {
+      id: user!.id,
+      nom: "Portail A",
+      role: "client",
+      clientId: a.id,
+      secours: false,
+    });
   });
 });

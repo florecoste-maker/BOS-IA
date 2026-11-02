@@ -325,14 +325,13 @@ export function FinanceClient({
                       aria-label={`Statut de ${invoice.numero}`}
                       value={(MANUAL_INVOICE_STATUSES as readonly string[]).includes(invoice.status) ? invoice.status : ""}
                       disabled={pending}
-                      onChange={(e) =>
-                        e.target.value &&
-                        send(
-                          "PATCH",
-                          { invoiceId: invoice.id, status: e.target.value },
-                          () => `${invoice.numero} : ${statusLabel(e.target.value)}`,
-                        )
-                      }
+                      onChange={(e) => {
+                        // Valeur lue tout de suite : la liste revient à l'ancien statut avant la réponse.
+                        const status = e.target.value;
+                        if (status) {
+                          send("PATCH", { invoiceId: invoice.id, status }, () => `${invoice.numero} : ${statusLabel(status)}`);
+                        }
+                      }}
                       className="border border-line bg-surface px-2 py-1 text-base"
                     >
                       {(MANUAL_INVOICE_STATUSES as readonly string[]).includes(invoice.status) ? null : (

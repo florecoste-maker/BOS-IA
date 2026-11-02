@@ -8,12 +8,15 @@ import type {
   Agent,
   AgentAction,
   Client,
+  Contact,
   DashboardMetrics,
   EmailDraft,
   Invoice,
   InvoiceStatus,
   Mission,
   Payment,
+  Quote,
+  QuoteStatus,
   StatusOperation,
 } from "./types";
 import { editedOperation } from "./actions/operations";
@@ -21,6 +24,15 @@ import { cleanEdits, isRetryable } from "./actions/rules";
 import {
   type ClientInput,
   type ClientPatch,
+  type ContactInput,
+  type ContactPatch,
+  type QuoteInput,
+  type QuoteRecord,
+  deriveQuote,
+  deriveQuotes,
+  invoiceFromQuote,
+  quoteStatusProblem,
+  quoteToInvoiceProblem,
   type InvoiceInput,
   type InvoiceRecord,
   type MissionInput,
@@ -108,6 +120,55 @@ const clients: Client[] = [
     source: "LinkedIn",
     creeLe: daysAgo(3),
     derniereActivite: daysAgo(3),
+  },
+];
+
+const contacts: Contact[] = [
+  {
+    id: "con-001",
+    clientId: "cli-001",
+    nom: "Dupont",
+    prenom: "Camille",
+    fonction: "Gérante",
+    email: "camille.dupont@atelier-nord.example",
+    telephone: "01 23 45 67 89",
+    categorie: "interlocuteur",
+    principal: true,
+    creeLe: daysAgo(60),
+  },
+  {
+    id: "con-002",
+    clientId: "cli-001",
+    nom: "Morel",
+    prenom: "Louis",
+    fonction: "Client de l'atelier",
+    email: "louis.morel@particulier.example",
+    categorie: "client",
+    principal: false,
+    notes: "Demande de devis cuisine sur mesure.",
+    creeLe: daysAgo(4),
+  },
+  {
+    id: "con-003",
+    clientId: "cli-002",
+    nom: "Benali",
+    prenom: "Yasmine",
+    fonction: "Directrice des opérations",
+    email: "y.benali@ocean-services.example",
+    categorie: "interlocuteur",
+    principal: true,
+    creeLe: daysAgo(35),
+  },
+  {
+    id: "con-004",
+    clientId: "cli-004",
+    nom: "Chen",
+    prenom: "Li",
+    fonction: "CTO",
+    email: "li.chen@techbridge.example",
+    categorie: "interlocuteur",
+    principal: true,
+    creeLe: daysAgo(9),
   },
 ];
 
@@ -233,6 +294,40 @@ const invoices: InvoiceRecord[] = [
     status: "emise",
     emiseLe: day(-14),
     echeance: day(-1),
+  },
+];
+
+const quotes: QuoteRecord[] = [
+  {
+    id: "dev-001",
+    numero: "DEV-2026-0001",
+    clientId: "cli-004",
+    missionId: "mis-005",
+    objet: "Agent de qualification des leads",
+    lignes: [
+      { designation: "Cadrage et conception de l'agent", quantite: 2, prixUnitaireHT: 900 },
+      { designation: "Développement et intégration CRM", quantite: 4, prixUnitaireHT: 700 },
+      { designation: "Mise en service et formation de l'équipe", quantite: 1, prixUnitaireHT: 800 },
+    ],
+    tauxTva: 20,
+    status: "envoye",
+    emisLe: day(-5),
+    valableJusquau: day(25),
+    creeLe: daysAgo(5),
+  },
+  {
+    id: "dev-002",
+    numero: "DEV-2026-0002",
+    clientId: "cli-002",
+    missionId: "mis-002",
+    objet: "Automatisation du tri des e-mails entrants",
+    lignes: [{ designation: "Automatisation e-mails (forfait)", quantite: 1, prixUnitaireHT: 3200 }],
+    tauxTva: 20,
+    status: "facture",
+    emisLe: day(-30),
+    valableJusquau: day(0),
+    factureId: "inv-005",
+    creeLe: daysAgo(30),
   },
 ];
 
@@ -385,9 +480,116 @@ function touchClient(clientId: string) {
   if (client) client.derniereActivite = stamp();
 }
 
+function quoteById(quoteId: string): Quote | undefined {
+  const record = quotes.find((q) => q.id === quoteId);
+  return record ? deriveQuote(record, clients.find((c) => c.id === record.clientId)) : undefined;
+}
+
+/** Un seul interlocuteur principal par espace. */
+function keepSinglePrincipal(contact: Contact) {
+  if (!contact.principal) return;
+  for (const c of contacts) if (c.clientId === contact.clientId && c.id !== contact.id) c.principal = false;
+}
+
 /** Base de démonstration en mémoire. */
 export const store = {
   getClients: () => clients.map((c) => ({ ...c })),
+  getContacts: () => contacts.map((c) => ({ ...c })),
+  getQuotes: () => deriveQuotes(quotes, clients).map((q) => ({ ...q, lignes: q.lignes.map((l) => ({ ...l })) })),
+
+  /** Données d'un seul espace : filtrées ici, jamais par l'appelant. */
+  getSpace(clientId: string) {
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return null;
+    const invoiceIds = new Set(invoices.filter((i) => i.clientId === clientId).map((i) => i.id));
+    return {
+      client: { ...client },
+      contacts: contacts.filter((c) => c.clientId === clientId).map((c) => ({ ...c })),
+      missions: missions.filter((m) => m.clientId === clientId).map((m) => ({ ...m })),
+      quotes: store.getQuotes().filter((q) => q.clientId === clientId),
+      invoices: currentInvoices().filter((i) => i.clientId === clientId),
+      payments: payments.filter((p) => invoiceIds.has(p.factureId)).map((p) => ({ ...p })),
+    };
+  },
+
+  createContact(input: ContactInput): WriteResult<Contact> {
+    if (!clients.some((c) => c.id === input.clientId)) return failure("Client introuvable", 404);
+    const contact: Contact = {
+      id: id("con"),
+      clientId: input.clientId,
+      nom: input.nom,
+      prenom: optional(input.prenom),
+      fonction: optional(input.fonction),
+      email: optional(input.email),
+      telephone: optional(input.telephone),
+      categorie: input.categorie,
+      principal: input.principal,
+      notes: optional(input.notes),
+      creeLe: stamp(),
+    };
+    contacts.push(contact);
+    keepSinglePrincipal(contact);
+    touchClient(input.clientId);
+    return { ok: true, value: { ...contact } };
+  },
+
+  updateContact(contactId: string, patch: ContactPatch): WriteResult<Contact> {
+    const contact = contacts.find((c) => c.id === contactId);
+    if (!contact) return failure("Contact introuvable", 404);
+    for (const [key, value] of Object.entries(patch)) {
+      (contact as unknown as Record<string, unknown>)[key] =
+        key === "nom" || key === "categorie" || key === "principal" ? value : optional(value as string);
+    }
+    keepSinglePrincipal(contact);
+    touchClient(contact.clientId);
+    return { ok: true, value: { ...contact } };
+  },
+
+  createQuote(input: QuoteInput): WriteResult<Quote> {
+    if (!clients.some((c) => c.id === input.clientId)) return failure("Client introuvable", 404);
+    if (input.missionId && !missionBelongs(missions.find((m) => m.id === input.missionId), input.clientId)) {
+      return failure("Cette mission n'appartient pas à ce client");
+    }
+    const record: QuoteRecord = {
+      id: id("dev"),
+      numero: nextNumber("DEV", Number(input.emisLe.slice(0, 4)), quotes.map((q) => q.numero)),
+      clientId: input.clientId,
+      missionId: input.missionId,
+      objet: input.objet,
+      lignes: input.lignes.map((l) => ({ ...l })),
+      tauxTva: input.tauxTva,
+      status: input.status,
+      emisLe: input.emisLe,
+      valableJusquau: input.valableJusquau,
+      creeLe: stamp(),
+    };
+    quotes.push(record);
+    touchClient(input.clientId);
+    return { ok: true, value: quoteById(record.id)! };
+  },
+
+  updateQuoteStatus(quoteId: string, status: QuoteStatus): WriteResult<Quote> {
+    const record = quotes.find((q) => q.id === quoteId);
+    if (!record) return failure("Devis introuvable", 404);
+    const problem = quoteStatusProblem(record.status, status);
+    if (problem) return failure(problem, 409);
+    record.status = status;
+    return { ok: true, value: quoteById(record.id)! };
+  },
+
+  /** Devis accepté → facture émise (une seule fois). */
+  invoiceQuote(quoteId: string, emiseLe?: string): WriteResult<{ quote: Quote; invoice: Invoice }> {
+    const record = quotes.find((q) => q.id === quoteId);
+    const quote = record && quoteById(record.id);
+    if (!record || !quote) return failure("Devis introuvable", 404);
+    const problem = quoteToInvoiceProblem(quote);
+    if (problem) return failure(problem, 409);
+    const created = store.createInvoice(invoiceFromQuote(quote, emiseLe));
+    if (!created.ok) return created;
+    record.status = "facture";
+    record.factureId = created.value.id;
+    return { ok: true, value: { quote: quoteById(record.id)!, invoice: created.value } };
+  },
   getMissions: () => missions.map((m) => ({ ...m })),
   getInvoices: currentInvoices,
   getPayments: () => payments.map((p) => ({ ...p })),

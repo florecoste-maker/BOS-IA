@@ -6,12 +6,14 @@
 import { gzipSync } from "node:zlib";
 import type { Repository } from "@/lib/data";
 
-export const BACKUP_VERSION = 2;
+export const BACKUP_VERSION = 3;
 
 export async function buildBackup(repo: Repository) {
-  const [clients, missions, invoices, payments, agents, actions, runs] = await Promise.all([
+  const [clients, contacts, missions, quotes, invoices, payments, agents, actions, runs] = await Promise.all([
     repo.getClients(),
+    repo.getContacts(),
     repo.getMissions(),
+    repo.getQuotes(),
     repo.getInvoices(),
     repo.getPayments(),
     repo.getAgents(),
@@ -23,11 +25,13 @@ export async function buildBackup(repo: Repository) {
     version: BACKUP_VERSION,
     exporteLe: new Date().toISOString(),
     mode: repo.mode,
-    donnees: { clients, missions, factures: invoices, paiements: payments },
+    donnees: { clients, contacts, missions, devis: quotes, factures: invoices, paiements: payments },
     agents: { agents, actions, executions: runs },
     totaux: {
       clients: clients.length,
+      contacts: contacts.length,
       missions: missions.length,
+      devis: quotes.length,
       factures: invoices.length,
       paiements: payments.length,
     },

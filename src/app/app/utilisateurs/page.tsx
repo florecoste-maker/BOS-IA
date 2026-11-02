@@ -10,14 +10,15 @@ export const dynamic = "force-dynamic";
 export default async function UsersPage() {
   const actor = await getActor();
   if (actor?.role !== "admin") redirect("/app");
-  const users = await (await getRepository()).listUsers();
+  const repo = await getRepository();
+  const [users, clients] = await Promise.all([repo.listUsers(), repo.getClients()]);
 
   return (
     <>
       <SectionTitle
         eyebrow="Administration"
         title="Comptes"
-        description="Un compte par personne : chaque décision et chaque envoi sont attribués à leur auteur dans le journal. Les membres font le travail courant ; les administrateurs gèrent aussi les comptes et consultent le journal."
+        description="Un compte par personne : chaque décision et chaque envoi sont attribués à leur auteur dans le journal. Les membres font le travail courant ; les administrateurs gèrent aussi les comptes et consultent le journal. Un compte client ne voit que l'espace de son entreprise (devis, factures, paiements, missions, contacts)."
       />
       {!isDatabaseConfigured() ? (
         <p className="mb-6 border-l-2 border-warn bg-surface px-3 py-2 text-sm">
@@ -25,7 +26,7 @@ export default async function UsersPage() {
           base MySQL pour les conserver.
         </p>
       ) : null}
-      <UsersClient initialUsers={users} selfId={actor.id} />
+      <UsersClient initialUsers={users} selfId={actor.id} clients={clients.map((c) => ({ id: c.id, nom: c.nom }))} />
       <p className="mt-10 max-w-2xl text-xs text-ink-muted">
         Le mot de passe de secours (BOS_ADMIN_PASSWORD, connexion sans e-mail) reste utilisable en
         cas de perte de tous les accès ; chaque usage est journalisé et signalé par alerte. Une fois

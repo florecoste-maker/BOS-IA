@@ -8,6 +8,9 @@ import { store } from "./store";
 import type {
   ClientInput,
   ClientPatch,
+  ContactInput,
+  ContactPatch,
+  QuoteInput,
   InvoiceInput,
   MissionInput,
   MissionPatch,
@@ -20,12 +23,15 @@ import type {
   AgentAction,
   AgentRunLog,
   Client,
+  Contact,
   DashboardMetrics,
   EmailDraft,
   Invoice,
   InvoiceStatus,
   Mission,
   Payment,
+  Quote,
+  QuoteStatus,
   StatusOperation,
   User,
   AuditEntry,
@@ -37,12 +43,15 @@ export interface NewUser {
   email: string;
   nom: string;
   role: User["role"];
+  /** Obligatoire pour un compte client, interdit sinon. */
+  clientId?: string;
   passwordHash: string;
 }
 
+/** Le rôle ne passe jamais de l'équipe à un client (ni l'inverse) : vérifié par l'appelant. */
 export interface UserPatch {
   nom?: string;
-  role?: User["role"];
+  role?: "admin" | "membre";
   actif?: boolean;
   passwordHash?: string;
 }
@@ -78,9 +87,23 @@ export interface AgentRunRecord {
   actions: AgentAction[];
 }
 
+/** Tout ce qui concerne une seule entreprise cliente. */
+export interface SpaceData {
+  client: Client;
+  contacts: Contact[];
+  missions: Mission[];
+  quotes: Quote[];
+  invoices: Invoice[];
+  payments: Payment[];
+}
+
 export interface Repository {
   mode: DataMode;
   getClients(): Promise<Client[]>;
+  getContacts(): Promise<Contact[]>;
+  getQuotes(): Promise<Quote[]>;
+  /** Données d'un seul espace, filtrées par la base (null si le client n'existe pas). */
+  getSpace(clientId: string): Promise<SpaceData | null>;
   getMissions(): Promise<Mission[]>;
   getInvoices(): Promise<Invoice[]>;
   getPayments(): Promise<Payment[]>;
@@ -90,12 +113,19 @@ export interface Repository {
   /* Clients, missions, factures et paiements (saisis dans le cockpit) */
   createClient(input: ClientInput): Promise<WriteResult<Client>>;
   updateClient(id: string, patch: ClientPatch): Promise<WriteResult<Client>>;
+  createContact(input: ContactInput): Promise<WriteResult<Contact>>;
+  updateContact(id: string, patch: ContactPatch): Promise<WriteResult<Contact>>;
   createMission(input: MissionInput): Promise<WriteResult<Mission>>;
   updateMission(id: string, patch: MissionPatch): Promise<WriteResult<Mission>>;
   /** Numéro FA-AAAA-NNNN attribué si absent. */
   createInvoice(input: InvoiceInput): Promise<WriteResult<Invoice>>;
   /** Statut choisi à la main ou par un agent ; « payée » découle des paiements. */
   updateInvoiceStatus(id: string, status: InvoiceStatus): Promise<WriteResult<Invoice>>;
+  /** Numéro DEV-AAAA-NNNN attribué automatiquement. */
+  createQuote(input: QuoteInput): Promise<WriteResult<Quote>>;
+  updateQuoteStatus(id: string, status: QuoteStatus): Promise<WriteResult<Quote>>;
+  /** Devis accepté → facture émise, une seule fois. */
+  invoiceQuote(id: string): Promise<WriteResult<{ quote: Quote; invoice: Invoice }>>;
   /** Paiement reçu : la facture passe en « partiellement payée » ou « payée ». */
   recordPayment(input: PaymentInput): Promise<WriteResult<{ payment: Payment; invoice: Invoice }>>;
   /** Décision humaine sur une action en attente (null si introuvable ou déjà tranchée). */
@@ -147,6 +177,14 @@ const demoLocks = new Set<string>();
 const demoRepository: Repository = {
   mode: "demo",
   getClients: async () => store.getClients(),
+  getContacts: async () => store.getContacts(),
+  getQuotes: async () => store.getQuotes(),
+  getSpace: async (clientId) => store.getSpace(clientId),
+  createContact: async (input) => store.createContact(input),
+  updateContact: async (id, patch) => store.updateContact(id, patch),
+  createQuote: async (input) => store.createQuote(input),
+  updateQuoteStatus: async (id, status) => store.updateQuoteStatus(id, status),
+  invoiceQuote: async (id) => store.invoiceQuote(id),
   getMissions: async () => store.getMissions(),
   getInvoices: async () => store.getInvoices(),
   getPayments: async () => store.getPayments(),
@@ -190,6 +228,7 @@ const demoRepository: Repository = {
       email,
       nom: input.nom,
       role: input.role,
+      ...(input.clientId ? { clientId: input.clientId } : {}),
       actif: true,
       creeLe: new Date().toISOString(),
       passwordHash: input.passwordHash,

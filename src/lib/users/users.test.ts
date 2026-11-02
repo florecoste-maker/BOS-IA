@@ -66,6 +66,19 @@ describe("Utilisateur courant", () => {
   });
 });
 
+describe("Comptes clients", () => {
+  it("rattache un compte client à son entreprise, et refuse un compte client sans entreprise", async () => {
+    const repo = await getRepository();
+    const user = await repo.createUser({ email: "client@atelier.example", nom: "Client Atelier", role: "client", clientId: "cli-001", passwordHash: "x" });
+    const actor = await resolveActor({ uid: user!.id, role: "client", nom: user!.nom });
+    assert.deepEqual(actor, { id: user!.id, nom: "Client Atelier", role: "client", clientId: "cli-001", secours: false });
+    const orphan = await repo.createUser({ email: "orphelin@x.example", nom: "Orphelin", role: "client", passwordHash: "x" });
+    assert.equal(await resolveActor({ uid: orphan!.id, role: "client", nom: "Orphelin" }), null);
+    const staff = await repo.createUser({ email: "equipe@jamaliance.com", nom: "Équipe", role: "membre", passwordHash: "x" });
+    assert.equal((await resolveActor({ uid: staff!.id, role: "membre", nom: "Équipe" }))?.clientId, undefined);
+  });
+});
+
 describe("Export du journal", () => {
   it("neutralise les formules Excel dans les saisies non fiables", () => {
     assert.equal(csvCell("=HYPERLINK(\"http://x\")"), "\"'=HYPERLINK(\"\"http://x\"\")\"");

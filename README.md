@@ -19,7 +19,8 @@ après un seul redéploiement dans hPanel (il ne se reconstruit pas automatiquem
 
 | Élément | État |
 |--------|------|
-| App Next.js BOS-IA (clients, missions, factures, paiements, agents IA avec validation humaine) | ✅ Présent |
+| App Next.js BOS-IA (clients, contacts, missions, devis, factures, paiements, agents IA avec validation humaine) | ✅ Présent |
+| Espaces séparés par entreprise cliente + comptes clients (`/espace`) | ✅ Prêt |
 | Entrée moteur `/` (pas de landing marketing) | ✅ Préparé |
 | Redirection `/rendez-vous` → site public | ✅ Préparé |
 | Cockpit `/app/*` | ✅ Présent |
@@ -69,11 +70,13 @@ npm run lint
 | `/` | Entrée moteur (lien vitrine + cockpit) |
 | `/rendez-vous` | Redirige vers jamaliance.com/reservation |
 | `/app` | Cockpit BOS-IA |
-| `/app/clients` | Clients, prospects, contacts et missions |
+| `/app/clients` | Entreprises clientes, contacts et missions |
+| `/app/devis` | Devis par lignes, transformés en facture une fois acceptés |
 | `/app/finance` | Factures et paiements |
 | `/app/agents` | Supervision multi-agents + HITL |
 | `/app/import` | Import CSV / Excel des données |
 | `/app/integrations` | État Hostinger / TidyCal (+ aperçu calendrier) |
+| `/espace` | Espace d'une entreprise cliente (comptes clients uniquement) |
 
 ## Déploiement Hostinger (app.jamaliance.com)
 
@@ -205,7 +208,9 @@ Les indicateurs sont tous calculés à partir des données :
 
 ## Clients, missions, factures et paiements
 
-Tout se saisit dans le cockpit (aucun import nécessaire) :
+Tout se saisit dans le cockpit (aucun import nécessaire). Modes de paiement :
+virement, Stripe, PayPal, carte, prélèvement, chèque, espèces ; le paiement en ligne
+(Stripe, PayPal) sera branché plus tard, les règlements s'enregistrent à la main :
 - **Clients** (`/app/clients`) : entreprise, contact principal, e-mail, téléphone,
   secteur, source, notes ; statut prospect, actif, inactif ou perdu. L'e-mail du
   contact sert aux e-mails approuvés et aux relances de factures.
@@ -221,6 +226,35 @@ Tout se saisit dans le cockpit (aucun import nécessaire) :
   enregistrée). Jamais plus que le reste dû ; deux saisies simultanées ne
   dépassent pas le montant (facture verrouillée). Une facture payée ne change plus
   de statut ; « payée » ne se choisit jamais à la main.
+
+## Espaces clients et comptes clients
+
+Chaque entreprise cliente a son **espace** : contacts, missions, devis, factures et
+paiements. L'équipe Jamaliance (administrateurs, membres) voit tous les espaces
+dans le cockpit ; un **compte client** ne voit que celui de son entreprise.
+
+- Création : `/app/utilisateurs` → rôle « Client », entreprise choisie une fois pour
+  toutes (un compte client ne devient jamais un compte de l'équipe, ni l'inverse).
+- Connexion sur la même page `/login` ; un compte client arrive sur `/espace` et ne
+  peut ouvrir que `/espace`, `/api/espace` et `/api/compte` (son mot de passe).
+  Tout le reste répond 403 ou renvoie vers `/espace` (`src/lib/access.ts`, appliqué
+  par `src/proxy.ts`, revérifié dans les pages).
+- L'entreprise vient du compte, relu en base à chaque requête — jamais d'un paramètre :
+  `/api/espace?clientId=…` est ignoré. Les requêtes de l'espace filtrent sur
+  `client_id` (`Repository.getSpace`).
+- L'espace n'affiche ni notes internes, ni source, ni statut commercial, ni
+  brouillons (devis, factures), ni références bancaires (`src/lib/espace.ts`).
+- Contacts : interlocuteurs chez le client (un seul « principal ») et contacts de
+  ce client (ses clients, prospects, fournisseurs) pour ses futurs agents IA.
+
+## Devis
+
+Lignes (désignation, quantité, prix unitaire HT), TVA, date de validité (30 jours
+par défaut) ; numéro `DEV-AAAA-NNNN`. Statuts : brouillon (invisible pour le client),
+envoyé, accepté, refusé ; « expiré » se déduit de la date ; « Créer la facture »
+transforme un devis accepté en facture émise (échéance 30 jours), une seule fois,
+même sur double clic. Un devis facturé est verrouillé. Les devis figurent dans la
+sauvegarde JSON (pas d'import CSV).
 
 ## Import CSV / Excel
 

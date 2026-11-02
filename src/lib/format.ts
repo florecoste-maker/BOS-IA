@@ -40,6 +40,12 @@ export function statusLabel(status: string): string {
     livree: "Livrée",
     terminee: "Terminée",
     annulee: "Annulée",
+    // Devis
+    envoye: "Envoyé",
+    accepte: "Accepté",
+    refuse: "Refusé",
+    expire: "Expiré",
+    facture: "Facturé",
     // Factures
     brouillon: "Brouillon",
     emise: "Émise",
@@ -54,6 +60,14 @@ export function statusLabel(status: string): string {
   };
   return map[status] ?? status;
 }
+
+export const CONTACT_CATEGORY_LABELS: Record<string, string> = {
+  interlocuteur: "Interlocuteur chez le client",
+  client: "Client de l'entreprise",
+  prospect: "Prospect de l'entreprise",
+  fournisseur: "Fournisseur",
+  autre: "Autre",
+};
 
 export const MISSION_TYPE_LABELS: Record<string, string> = {
   agent_ia: "Agent IA",

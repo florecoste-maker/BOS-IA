@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { checkClient, checkInvoice, checkMission, checkPayment, nextNumber, settleInvoice, ttc } from "./business";
+import {
+  checkClient,
+  checkContact,
+  checkInvoice,
+  checkMission,
+  checkPayment,
+  checkQuote,
+  deriveQuote,
+  nextNumber,
+  quoteStatusProblem,
+  settleInvoice,
+  ttc,
+} from "./business";
 
 describe("Règles métier", () => {
   it("calcule le TTC au centime", () => {
@@ -60,5 +72,56 @@ describe("Règles métier", () => {
     assert.ok(checkPayment({ factureId: "f", montant: "100", date: "2026-10-01", mode: "paypal" }).ok);
     assert.equal(checkPayment({ factureId: "f", montant: 10, date: "2999-01-01" }).ok, false, "pas de date future");
     assert.equal(checkPayment({ factureId: "f", montant: 10, mode: "bitcoin" }).ok, false);
+  });
+
+  it("valide un contact", () => {
+    const ok = checkContact({ clientId: "c", nom: "Martin", email: "M@X.FR", principal: true, categorie: "client" });
+    assert.ok(ok.ok);
+    if (ok.ok) assert.equal(ok.value.email, "m@x.fr");
+    assert.equal(checkContact({ clientId: "c", nom: "x", categorie: "ami" }).ok, false);
+    assert.equal(checkContact({ nom: "x" }).ok, false, "espace obligatoire");
+    assert.deepEqual(checkContact({ principal: false }, { partial: true }), { ok: true, value: { principal: false } });
+  });
+
+  it("valide un devis et ses lignes", () => {
+    const ok = checkQuote({
+      clientId: "c",
+      objet: "Agent",
+      emisLe: "2026-10-01",
+      lignes: [{ designation: "Forfait", quantite: "2", prixUnitaireHT: "1 000,50" }],
+    });
+    assert.ok(ok.ok);
+    if (ok.ok) {
+      assert.equal(ok.value.valableJusquau, "2026-10-31", "30 jours par défaut");
+      assert.equal(ok.value.status, "brouillon");
+      assert.deepEqual(ok.value.lignes, [{ designation: "Forfait", quantite: 2, prixUnitaireHT: 1000.5 }]);
+    }
+    const ko = checkQuote({ clientId: "c", objet: "x", lignes: [{ designation: "", quantite: 0, prixUnitaireHT: "abc" }] });
+    assert.equal(ko.ok, false);
+    if (!ko.ok) assert.match(ko.error, /Ligne 1/);
+    assert.equal(checkQuote({ clientId: "c", objet: "x", lignes: [] }).ok, false);
+    assert.equal(checkQuote({ clientId: "c", objet: "x", lignes: [{ designation: "a", quantite: 1, prixUnitaireHT: 0 }] }).ok, false, "total nul");
+  });
+
+  it("déduit l'expiration d'un devis envoyé et verrouille un devis facturé", () => {
+    const record = {
+      id: "d",
+      numero: "DEV-1",
+      clientId: "c",
+      objet: "o",
+      lignes: [{ designation: "a", quantite: 3, prixUnitaireHT: 33.33 }],
+      tauxTva: 20,
+      status: "envoye" as const,
+      emisLe: "2026-10-01",
+      valableJusquau: "2026-10-31",
+      creeLe: "",
+    };
+    assert.equal(deriveQuote(record, { nom: "C" }, "2026-10-31").status, "envoye");
+    assert.equal(deriveQuote(record, { nom: "C" }, "2026-11-01").status, "expire");
+    assert.equal(deriveQuote({ ...record, status: "accepte" }, { nom: "C" }, "2026-12-01").status, "accepte");
+    assert.equal(deriveQuote(record, { nom: "C" }).montantHT, 99.99);
+    assert.match(quoteStatusProblem("facture", "envoye")!, /verrouillé/);
+    assert.match(quoteStatusProblem("envoye", "facture")!, /à la main/);
+    assert.equal(quoteStatusProblem("envoye", "accepte"), null);
   });
 });
