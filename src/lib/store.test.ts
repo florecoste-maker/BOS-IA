@@ -138,6 +138,28 @@ describe("Données de démonstration de l'agence", () => {
     assert.equal(store.updateQuoteStatus(created.value.id, "refuse").ok, false, "devis facturé verrouillé");
   });
 
+  it("le client accepte ou refuse un devis de son entreprise seulement, une fois", () => {
+    const base = { tauxTva: 20, emisLe: "2026-10-01", lignes: [{ designation: "x", quantite: 1, prixUnitaireHT: 100 }] };
+    const sent = store.createQuote({ ...base, clientId: "cli-001", objet: "À accepter", status: "envoye", valableJusquau: "2099-01-01" });
+    const old = store.createQuote({ ...base, clientId: "cli-001", objet: "Expiré", status: "envoye", valableJusquau: "2026-10-02" });
+    const draft = store.createQuote({ ...base, clientId: "cli-001", objet: "Brouillon", status: "brouillon", valableJusquau: "2099-01-01" });
+    assert.ok(sent.ok && old.ok && draft.ok);
+    if (!sent.ok || !old.ok || !draft.ok) return;
+    const other = store.respondToQuote("cli-002", sent.value.id, "accepte", "Intrus");
+    assert.deepEqual(other.ok ? null : [other.status, other.error], [404, "Devis introuvable"], "devis d'un autre client");
+    assert.equal(store.respondToQuote("cli-001", old.value.id, "accepte", "Camille").ok, false, "expiré");
+    assert.equal(store.respondToQuote("cli-001", draft.value.id, "accepte", "Camille").ok, false, "brouillon invisible");
+    const ok = store.respondToQuote("cli-001", sent.value.id, "accepte", "Camille Dupont");
+    assert.ok(ok.ok);
+    if (ok.ok) {
+      assert.equal(ok.value.status, "accepte");
+      assert.equal(ok.value.reponduPar, "Camille Dupont");
+      assert.ok(ok.value.reponduLe);
+    }
+    assert.equal(store.respondToQuote("cli-001", sent.value.id, "refuse", "Camille").ok, false, "une seule réponse");
+    assert.ok(store.invoiceQuote(sent.value.id).ok, "l'équipe peut ensuite facturer");
+  });
+
   it("exige HITL pour actions à risque", () => {
     const pending = store.getAgentActions().find((a) => a.hitlStatus === "pending");
     assert.ok(pending);

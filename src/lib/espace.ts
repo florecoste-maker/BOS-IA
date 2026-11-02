@@ -52,6 +52,8 @@ export function clientView(space: SpaceData) {
       status: q.status,
       emisLe: q.emisLe,
       valableJusquau: q.valableJusquau,
+      reponduLe: q.reponduLe,
+      reponduPar: q.reponduPar,
     })),
     factures: invoices.map((i) => ({
       id: i.id,

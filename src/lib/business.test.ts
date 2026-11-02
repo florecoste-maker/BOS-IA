@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   checkClient,
   checkContact,
+  clientDecisionProblem,
   checkInvoice,
   checkMission,
   checkPayment,
@@ -123,5 +124,10 @@ describe("Règles métier", () => {
     assert.match(quoteStatusProblem("facture", "envoye")!, /verrouillé/);
     assert.match(quoteStatusProblem("envoye", "facture")!, /à la main/);
     assert.equal(quoteStatusProblem("envoye", "accepte"), null);
+    const q = deriveQuote(record, { nom: "C" }, "2026-10-15");
+    assert.equal(clientDecisionProblem(q), null);
+    assert.match(clientDecisionProblem({ ...q, status: "expire" })!, /expiré/);
+    assert.match(clientDecisionProblem({ ...q, status: "facture" })!, /déjà accepté/);
+    assert.match(clientDecisionProblem({ ...q, status: "brouillon" })!, /introuvable/);
   });
 });

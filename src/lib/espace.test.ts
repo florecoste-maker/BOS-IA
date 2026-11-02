@@ -51,5 +51,11 @@ describe("Espace d'une entreprise cliente", () => {
     assert.deepEqual(view.factures.map((f) => f.objet), ["Facture émise"]);
     assert.equal(view.paiements.length, 1);
     assert.equal(view.factures[0].resteDu, 7);
+    const devis = view.devis[0];
+    const answered = await repo.respondToQuote(c.value.id, devis.id, "refuse", "Martin");
+    assert.ok(answered.ok);
+    const after = clientView((await repo.getSpace(c.value.id))!).devis[0];
+    assert.equal(after.status, "refuse");
+    assert.equal(after.reponduPar, "Martin");
   });
 });

@@ -251,7 +251,10 @@ dans le cockpit ; un **compte client** ne voit que celui de son entreprise.
 
 Lignes (désignation, quantité, prix unitaire HT), TVA, date de validité (30 jours
 par défaut) ; numéro `DEV-AAAA-NNNN`. Statuts : brouillon (invisible pour le client),
-envoyé, accepté, refusé ; « expiré » se déduit de la date ; « Créer la facture »
+envoyé, accepté, refusé ; « expiré » se déduit de la date. Dans son espace, le client
+**accepte ou refuse** un devis envoyé et encore valable (confirmation avec le montant,
+une seule réponse, nom et date conservés, inscrit au journal ; l'équipe est prévenue
+par e-mail via `BOS_ALERTES_EMAIL`). « Créer la facture »
 transforme un devis accepté en facture émise (échéance 30 jours), une seule fois,
 même sur double clic. Un devis facturé est verrouillé. Les devis figurent dans la
 sauvegarde JSON (pas d'import CSV).

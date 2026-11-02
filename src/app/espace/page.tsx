@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { EspaceDevisActions } from "@/components/espace-devis-actions";
 import { Metric, SectionTitle, StatusPill } from "@/components/ui";
 import { brand } from "@/lib/brand";
 import { getRepository } from "@/lib/data";
@@ -6,6 +7,7 @@ import { clientView } from "@/lib/espace";
 import {
   CONTACT_CATEGORY_LABELS,
   formatDate,
+  formatDateTime,
   formatMoneyCents,
   missionTypeLabel,
   paymentModeLabel,
@@ -120,8 +122,11 @@ export default async function EspacePage() {
                   · valable jusqu&apos;au {formatDate(d.valableJusquau)}
                 </p>
                 {d.status === "envoye" ? (
+                  <EspaceDevisActions devisId={d.id} numero={d.numero} montant={formatMoneyCents(d.montantTTC)} />
+                ) : null}
+                {d.reponduLe ? (
                   <p className="mt-1 text-xs text-ink-muted">
-                    Pour l&apos;accepter, répondez à {brand.email} en indiquant le numéro {d.numero}.
+                    {d.status === "refuse" ? "Refusé" : "Accepté"} par {d.reponduPar} le {formatDateTime(d.reponduLe)}
                   </p>
                 ) : null}
               </li>

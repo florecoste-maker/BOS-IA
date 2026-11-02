@@ -139,6 +139,9 @@ export interface Quote {
   valableJusquau: string;
   /** Facture créée à partir de ce devis. */
   factureId?: string;
+  /** Réponse du client depuis son espace (acceptation ou refus) : date et auteur. */
+  reponduLe?: string;
+  reponduPar?: string;
   creeLe: string;
 }
 

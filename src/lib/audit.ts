@@ -30,6 +30,8 @@ export const AUDIT_LABELS: Record<string, string> = {
   devis_cree: "Devis créé",
   devis_statut: "Statut de devis modifié",
   devis_facture: "Devis facturé",
+  devis_accepte_client: "Devis accepté par le client",
+  devis_refuse_client: "Devis refusé par le client",
   mission_creee: "Mission créée",
   mission_modifiee: "Mission modifiée",
   facture_creee: "Facture créée",

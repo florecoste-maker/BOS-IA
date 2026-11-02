@@ -124,6 +124,13 @@ export interface Repository {
   /** Numéro DEV-AAAA-NNNN attribué automatiquement. */
   createQuote(input: QuoteInput): Promise<WriteResult<Quote>>;
   updateQuoteStatus(id: string, status: QuoteStatus): Promise<WriteResult<Quote>>;
+  /** Réponse d'un compte client depuis son espace ; refusée hors de son entreprise. */
+  respondToQuote(
+    clientId: string,
+    quoteId: string,
+    decision: "accepte" | "refuse",
+    par: string,
+  ): Promise<WriteResult<Quote>>;
   /** Devis accepté → facture émise, une seule fois. */
   invoiceQuote(id: string): Promise<WriteResult<{ quote: Quote; invoice: Invoice }>>;
   /** Paiement reçu : la facture passe en « partiellement payée » ou « payée ». */
@@ -185,6 +192,7 @@ const demoRepository: Repository = {
   createQuote: async (input) => store.createQuote(input),
   updateQuoteStatus: async (id, status) => store.updateQuoteStatus(id, status),
   invoiceQuote: async (id) => store.invoiceQuote(id),
+  respondToQuote: async (clientId, quoteId, decision, par) => store.respondToQuote(clientId, quoteId, decision, par),
   getMissions: async () => store.getMissions(),
   getInvoices: async () => store.getInvoices(),
   getPayments: async () => store.getPayments(),

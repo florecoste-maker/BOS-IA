@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { StatusPill } from "@/components/ui";
 import { DEFAULT_TVA, MANUAL_QUOTE_STATUSES, MAX_QUOTE_LINES } from "@/lib/business";
-import { formatDate, formatMoneyCents, statusLabel } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoneyCents, statusLabel } from "@/lib/format";
 import type { Client, Mission, Quote } from "@/lib/types";
 
 /** 16 px : Safari sur iPhone ne zoome pas à la saisie. */
@@ -322,6 +322,12 @@ export function DevisClient({
                 <span className="font-medium text-ink">{formatMoneyCents(quote.montantTTC)} TTC</span> · Du{" "}
                 {formatDate(quote.emisLe)}, valable jusqu&apos;au {formatDate(quote.valableJusquau)}
               </p>
+              {quote.reponduLe ? (
+                <p className="mt-1 text-xs font-semibold text-nexus">
+                  {quote.status === "refuse" ? "Refusé" : "Accepté"} par le client ({quote.reponduPar}) le{" "}
+                  {formatDateTime(quote.reponduLe)}, depuis son espace
+                </p>
+              ) : null}
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {quote.status === "accepte" ? (
                   <button

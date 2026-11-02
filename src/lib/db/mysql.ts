@@ -13,6 +13,7 @@ import {
   type InvoiceRecord,
   type QuoteRecord,
   deriveInvoice,
+  clientDecisionProblem,
   deriveQuote,
   deriveQuotes,
   invoiceFromQuote,
@@ -87,6 +88,8 @@ export const SCHEMA = [
     emis_le DATE NOT NULL,
     valable_jusquau DATE NOT NULL,
     facture_id VARCHAR(64) NULL,
+    repondu_le DATETIME(3) NULL,
+    repondu_par VARCHAR(255) NULL,
     cree_le DATETIME(3) NOT NULL,
     INDEX idx_bos_devis_client (client_id)
   ) DEFAULT CHARSET=utf8mb4`,
@@ -194,6 +197,8 @@ export const SCHEMA = [
  */
 export const MIGRATIONS: Array<{ table: string; column: string; ddl: string }> = [
   { table: "bos_users", column: "client_id", ddl: "VARCHAR(64) NULL" },
+  { table: "bos_devis", column: "repondu_le", ddl: "DATETIME(3) NULL" },
+  { table: "bos_devis", column: "repondu_par", ddl: "VARCHAR(255) NULL" },
   { table: "bos_agent_actions", column: "email_cible", ddl: "VARCHAR(16) NULL" },
   { table: "bos_agent_actions", column: "email_ref", ddl: "VARCHAR(64) NULL" },
   { table: "bos_agent_actions", column: "email_objet", ddl: "VARCHAR(255) NULL" },
@@ -391,6 +396,8 @@ function toQuoteRecord(r: Row): QuoteRecord {
     emisLe: String(r.emis_le),
     valableJusquau: String(r.valable_jusquau),
     factureId: opt(r.facture_id),
+    reponduLe: r.repondu_le ? fromSqlDateTime(String(r.repondu_le)) : undefined,
+    reponduPar: opt(r.repondu_par),
     creeLe: fromSqlDateTime(String(r.cree_le)),
   };
 }
@@ -750,6 +757,26 @@ export const mysqlRepository: Repository = {
       if (problem) return failure(problem, 409);
       await conn.execute("UPDATE bos_devis SET statut = ? WHERE id = ?", [status, id]);
       return { ok: true as const, value: (await findQuote(id, conn))!.quote };
+    });
+  },
+
+  respondToQuote(clientId, quoteId, decision, par) {
+    return transaction(async (conn) => {
+      // Filtre sur l'entreprise du compte : le devis d'un autre client est « introuvable ».
+      const record = (
+        await select("SELECT * FROM bos_devis WHERE id = ? AND client_id = ? FOR UPDATE", toQuoteRecord, [quoteId, clientId], conn)
+      )[0];
+      if (!record) return failure("Devis introuvable", 404);
+      const quote = deriveQuote(record, await findClient(clientId, conn));
+      const problem = clientDecisionProblem(quote);
+      if (problem) return failure(problem, 409);
+      await conn.execute("UPDATE bos_devis SET statut = ?, repondu_le = ?, repondu_par = ? WHERE id = ?", [
+        decision,
+        nowSql(),
+        par.slice(0, 255),
+        quoteId,
+      ]);
+      return { ok: true as const, value: (await findQuote(quoteId, conn))!.quote };
     });
   },
 

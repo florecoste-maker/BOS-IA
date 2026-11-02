@@ -494,7 +494,22 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
     assert.equal(qa.value.montantTTC, 2159.64);
 
     assert.equal((await repo.invoiceQuote(qa.value.id)).ok, false, "pas encore accepté");
-    assert.ok((await repo.updateQuoteStatus(qa.value.id, "accepte")).ok);
+    // Réponse depuis l'espace client : refusée pour le compte d'une autre entreprise.
+    const intrus = await repo.respondToQuote(b.value.id, qa.value.id, "accepte", "Bruno");
+    assert.deepEqual(intrus.ok ? null : intrus.status, 404);
+    const both = await Promise.all([
+      repo.respondToQuote(a.value.id, qa.value.id, "accepte", "Alice"),
+      repo.respondToQuote(a.value.id, qa.value.id, "refuse", "Arthur"),
+    ]);
+    assert.equal(both.filter((r) => r.ok).length, 1, "une seule réponse, même simultanée");
+    const answered = both.find((r) => r.ok)!;
+    if (answered.ok && answered.value.status === "refuse") {
+      // Ordre d'arrivée non garanti : on remet le devis en accepté par l'équipe pour la suite.
+      assert.ok((await repo.updateQuoteStatus(qa.value.id, "accepte")).ok);
+    }
+    const stored = (await repo.getQuotes()).find((q) => q.id === qa.value.id)!;
+    assert.ok(stored.reponduLe && ["Alice", "Arthur"].includes(stored.reponduPar!));
+    assert.equal(stored.status, "accepte");
     const twice = await Promise.all([repo.invoiceQuote(qa.value.id), repo.invoiceQuote(qa.value.id)]);
     assert.equal(twice.filter((r) => r.ok).length, 1, "double clic : une seule facture");
     const done = twice.find((r) => r.ok)!;
@@ -521,8 +536,10 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
 
   it("migre les comptes et rattache un compte client à son entreprise", async () => {
     await conn.query("ALTER TABLE bos_users DROP COLUMN client_id");
+    await conn.query("ALTER TABLE bos_devis DROP COLUMN repondu_le, DROP COLUMN repondu_par");
     await reconnect();
     const a = (await repo.getClients()).find((c) => c.nom === "Espace A")!;
+    assert.ok((await repo.getQuotes()).length > 0, "devis relus après migration");
     const user = await repo.createUser({ email: "portail@a.example", nom: "Portail A", role: "client", clientId: a.id, passwordHash: "scrypt$x" });
     assert.equal(user?.role, "client");
     assert.equal(user?.clientId, a.id);

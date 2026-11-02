@@ -28,6 +28,7 @@ import {
   type ContactPatch,
   type QuoteInput,
   type QuoteRecord,
+  clientDecisionProblem,
   deriveQuote,
   deriveQuotes,
   invoiceFromQuote,
@@ -574,6 +575,20 @@ export const store = {
     const problem = quoteStatusProblem(record.status, status);
     if (problem) return failure(problem, 409);
     record.status = status;
+    return { ok: true, value: quoteById(record.id)! };
+  },
+
+  /** Réponse d'un compte client : le devis doit appartenir à son entreprise. */
+  respondToQuote(clientId: string, quoteId: string, decision: "accepte" | "refuse", par: string): WriteResult<Quote> {
+    const record = quotes.find((q) => q.id === quoteId && q.clientId === clientId);
+    const quote = record && quoteById(record.id);
+    // Même réponse pour un devis inexistant ou d'un autre client : rien n'est révélé.
+    if (!record || !quote) return failure("Devis introuvable", 404);
+    const problem = clientDecisionProblem(quote);
+    if (problem) return failure(problem, 409);
+    record.status = decision;
+    record.reponduLe = stamp();
+    record.reponduPar = par;
     return { ok: true, value: quoteById(record.id)! };
   },
 

@@ -199,6 +199,8 @@ export interface QuoteRecord {
   emisLe: string;
   valableJusquau: string;
   factureId?: string;
+  reponduLe?: string;
+  reponduPar?: string;
   creeLe: string;
 }
 
@@ -244,6 +246,15 @@ export function invoiceFromQuote(quote: Quote, emiseLe = today()): InvoiceInput 
     emiseLe,
     echeance,
   };
+}
+
+/** Réponse d'un client depuis son espace : seulement sur un devis envoyé, encore valable. */
+export function clientDecisionProblem(quote: Quote): string | null {
+  if (quote.status === "expire") return "Ce devis a expiré : contactez Jamaliance pour une nouvelle proposition";
+  if (quote.status === "accepte" || quote.status === "facture") return "Ce devis est déjà accepté";
+  if (quote.status === "refuse") return "Ce devis a déjà été refusé";
+  if (quote.status !== "envoye") return "Devis introuvable";
+  return null;
 }
 
 /** Changement de statut à la main : un devis facturé ne bouge plus. */
