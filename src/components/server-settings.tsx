@@ -4,7 +4,10 @@ import { useState, useTransition } from "react";
 
 type Resultat = { ok: boolean; text: string } | null;
 
-const champ = "mt-1 block w-full border border-line bg-surface px-2 py-1.5";
+// 16 px : en dessous, Safari sur iPhone zoome à chaque champ.
+const champ = "mt-1 block w-full border border-line bg-surface px-2 py-1.5 text-base";
+/** Ni majuscule automatique ni correction (iPhone) : `u123…` resterait sinon `U123…`. */
+const brut = { autoCapitalize: "none", autoCorrect: "off", spellCheck: false } as const;
 const bouton =
   "border border-line px-3 py-1.5 text-xs font-semibold hover:border-brand/40 disabled:opacity-50";
 
@@ -60,22 +63,22 @@ function Base({ onDone }: { onDone: () => void }) {
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         <label>
           Nom de la base
-          <input name="baseNom" required autoComplete="off" placeholder="u123456789_bosia" className={champ} />
+          <input {...brut} name="baseNom" required autoComplete="off" placeholder="u123456789_bosia" className={champ} />
         </label>
         <label>
           Utilisateur
-          <input name="baseUtilisateur" required autoComplete="off" placeholder="u123456789_bosia" className={champ} />
+          <input {...brut} name="baseUtilisateur" required autoComplete="off" placeholder="u123456789_bosia" className={champ} />
         </label>
         <label>
           Mot de passe
-          <input name="baseMotDePasse" required type="password" autoComplete="new-password" className={champ} />
+          <input {...brut} name="baseMotDePasse" required type="password" autoComplete="new-password" className={champ} />
         </label>
       </div>
       <details className="mt-2 text-xs text-ink-muted">
         <summary className="cursor-pointer">Option avancée</summary>
         <label className="mt-2 block max-w-xs">
           Serveur de la base (laisser vide : localhost)
-          <input name="baseHote" autoComplete="off" placeholder="localhost" className={champ} />
+          <input {...brut} name="baseHote" autoComplete="off" placeholder="localhost" className={champ} />
         </label>
       </details>
       <button type="submit" disabled={pending} className={`${bouton} mt-3`}>
@@ -88,7 +91,7 @@ function Base({ onDone }: { onDone: () => void }) {
 
 function Emails({ onDone }: { onDone: () => void }) {
   const { result, pending, envoyer } = useEnvoi("emails", onDone);
-  const [fournisseur, setFournisseur] = useState("hostinger");
+  const [fournisseur, setFournisseur] = useState("auto");
   return (
     <form onSubmit={envoyer} className="text-sm">
       <h4 className="font-display text-base font-semibold text-ink">2. Envoi des e-mails</h4>
@@ -105,38 +108,40 @@ function Emails({ onDone }: { onDone: () => void }) {
             onChange={(e) => setFournisseur(e.target.value)}
             className={champ}
           >
+            <option value="auto">Automatique (recommandé)</option>
             <option value="hostinger">Hostinger</option>
             <option value="google">Google Workspace / Gmail</option>
+            <option value="microsoft">Microsoft 365 / Outlook</option>
             <option value="autre">Autre serveur</option>
           </select>
         </label>
         <label>
           Adresse d&apos;envoi
-          <input name="adresse" required type="email" placeholder="contact@jamaliance.com" className={champ} />
+          <input {...brut} name="adresse" required type="email" placeholder="contact@jamaliance.com" className={champ} />
         </label>
         <label>
           Mot de passe de la boîte
-          <input name="motDePasse" required type="password" autoComplete="new-password" className={champ} />
+          <input {...brut} name="motDePasse" required type="password" autoComplete="new-password" className={champ} />
         </label>
         {fournisseur === "autre" ? (
           <>
             <label>
               Serveur SMTP
-              <input name="serveur" required placeholder="smtp.exemple.com" className={champ} />
+              <input {...brut} name="serveur" required placeholder="smtp.exemple.com" className={champ} />
             </label>
             <label>
               Port
-              <input name="port" placeholder="587" inputMode="numeric" className={champ} />
+              <input {...brut} name="port" placeholder="587" inputMode="numeric" className={champ} />
             </label>
           </>
         ) : null}
         <label>
           Nom affiché
-          <input name="nomExpediteur" defaultValue="Jamaliance" className={champ} />
+          <input {...brut} name="nomExpediteur" defaultValue="Jamaliance" className={champ} />
         </label>
         <label className="sm:col-span-2">
           Mode test (conseillé au début) : tout envoyer à
-          <input name="redirection" type="email" placeholder="votre adresse — vide = envois réels" className={champ} />
+          <input {...brut} name="redirection" type="email" placeholder="votre adresse — vide = envois réels" className={champ} />
         </label>
       </div>
       <button type="submit" disabled={pending} className={`${bouton} mt-3`}>
@@ -159,7 +164,7 @@ function Alertes({ defaut, onDone }: { defaut: string; onDone: () => void }) {
       <div className="mt-3 flex flex-wrap items-end gap-2">
         <label className="min-w-56 flex-1">
           Adresse
-          <input name="alertes" required type="email" defaultValue={defaut} placeholder="vous@jamaliance.com" className={champ} />
+          <input {...brut} name="alertes" required type="email" defaultValue={defaut} placeholder="vous@jamaliance.com" className={champ} />
         </label>
         <button type="submit" disabled={pending} className={bouton}>
           {pending ? "Enregistrement…" : "Enregistrer"}
