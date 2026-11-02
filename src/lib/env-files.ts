@@ -94,6 +94,7 @@ export function loadPersistentEnv(start = process.cwd()) {
   registry.__bosEnvLastScan = Date.now();
   // Plusieurs fichiers : le plus proche de l'application l'emporte, comme avant.
   const vus = new Set<string>();
+  const valeursFichier: Record<string, string> = {};
   for (const { file, isPublic } of findEnvFiles(start)) {
     if (isPublic) continue;
     try {
@@ -105,6 +106,7 @@ export function loadPersistentEnv(start = process.cwd()) {
         const current = process.env[key];
         if (vus.has(key)) continue;
         vus.add(key);
+        valeursFichier[key] = value;
         if (!current?.trim() || current === fromFile()[key]) {
           process.env[key] = value;
           fromFile()[key] = value;
@@ -115,8 +117,36 @@ export function loadPersistentEnv(start = process.cwd()) {
       console.error(`Lecture impossible de ${file} :`, error instanceof Error ? error.message : error);
     }
   }
+  repairAuthEnv(valeursFichier);
   // Vercel : disque en lecture seule, le secret est dérivé du mot de passe (auth.ts).
   if (process.env.NODE_ENV === "production" && !process.env.VERCEL) ensureSessionSecret();
+}
+
+/** Mêmes seuils que auth.ts (12 et 32 caractères). */
+const MIN_ADMIN_PASSWORD = 12;
+const MIN_SESSION_SECRET = 32;
+
+/**
+ * Une valeur fournie par le processus (variables hPanel du site, reprises au
+ * build) reste prioritaire… sauf si elle est inutilisable : un mot de passe
+ * administrateur ou un secret de session trop court fermerait le cockpit alors
+ * qu'un réglage valide existe. Cas réel : app.jamaliance.com, dont les
+ * variables hPanel gardaient un mot de passe d'essai de moins de 12 caractères.
+ */
+export function repairAuthEnv(valeursFichier: Record<string, string>) {
+  const password = process.env.BOS_ADMIN_PASSWORD?.trim();
+  const fromFilePassword = valeursFichier.BOS_ADMIN_PASSWORD?.trim();
+  if (password && password.length < MIN_ADMIN_PASSWORD && fromFilePassword && fromFilePassword.length >= MIN_ADMIN_PASSWORD) {
+    process.env.BOS_ADMIN_PASSWORD = fromFilePassword;
+    fromFile().BOS_ADMIN_PASSWORD = fromFilePassword;
+    console.warn("BOS_ADMIN_PASSWORD du site trop court : valeur de bos-ia.env utilisée.");
+  }
+  const secret = process.env.BOS_SESSION_SECRET?.trim();
+  if (secret && secret.length < MIN_SESSION_SECRET) {
+    // Retiré : remplacé par bos-ia-session.key (Hostinger) ou dérivé du mot de passe (auth.ts).
+    delete process.env.BOS_SESSION_SECRET;
+    console.warn("BOS_SESSION_SECRET du site trop court : ignoré.");
+  }
 }
 
 /** Relecture limitée à une toutes les 10 s : prend en compte un fichier créé ou complété après le démarrage. */
