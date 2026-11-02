@@ -41,7 +41,13 @@ export interface EnvFileReport {
 const registry = globalThis as typeof globalThis & {
   __bosEnvFiles?: string[];
   __bosEnvLastScan?: number;
+  /** Valeurs venues de `bos-ia.env` : une modification ultérieure du fichier les remplace. */
+  __bosEnvFromFile?: Record<string, string>;
 };
+
+function fromFile() {
+  return (registry.__bosEnvFromFile ??= {});
+}
 
 export function loadedEnvFiles() {
   return registry.__bosEnvFiles ?? [];
@@ -86,12 +92,23 @@ export function readEnvFile(file: string): Record<string, string> {
 
 export function loadPersistentEnv(start = process.cwd()) {
   registry.__bosEnvLastScan = Date.now();
+  // Plusieurs fichiers : le plus proche de l'application l'emporte, comme avant.
+  const vus = new Set<string>();
   for (const { file, isPublic } of findEnvFiles(start)) {
     if (isPublic) continue;
     try {
       // Relu à chaque passage : une variable ajoutée depuis (installation, workflow) est prise en compte.
+      // Une variable fournie par le processus (hPanel) reste prioritaire ; une valeur
+      // venue du fichier suit ses modifications (réglages changés depuis le cockpit
+      // par un autre processus Node).
       for (const [key, value] of Object.entries(readEnvFile(file))) {
-        if (!process.env[key]?.trim()) process.env[key] = value;
+        const current = process.env[key];
+        if (vus.has(key)) continue;
+        vus.add(key);
+        if (!current?.trim() || current === fromFile()[key]) {
+          process.env[key] = value;
+          fromFile()[key] = value;
+        }
       }
       if (!loadedEnvFiles().includes(file)) registry.__bosEnvFiles = [...loadedEnvFiles(), file];
     } catch (error) {
@@ -181,7 +198,10 @@ export function writeEnvVariables(values: Record<string, string>, start = proces
     lines.push(`${key}=${quoted}`);
   }
   writePrivate(file, `${lines.join("\n").trim()}\n`);
-  for (const [key, value] of Object.entries(values)) process.env[key] = value;
+  for (const [key, value] of Object.entries(values)) {
+    process.env[key] = value;
+    fromFile()[key] = value;
+  }
   if (!loadedEnvFiles().includes(file)) registry.__bosEnvFiles = [...loadedEnvFiles(), file];
   return file;
 }

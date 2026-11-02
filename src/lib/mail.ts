@@ -17,8 +17,10 @@ export interface MailConfig {
   copie: string | null;
 }
 
-function readEnv(name: string) {
-  const v = process.env[name]?.trim();
+type Env = Record<string, string | undefined>;
+
+function readEnv(name: string, env: Env = process.env) {
+  const v = env[name]?.trim();
   return v ? v : null;
 }
 
@@ -28,20 +30,23 @@ export function isEmail(value: string | null | undefined): value is string {
   return Boolean(value && EMAIL.test(value));
 }
 
-/** null tant que SMTP_HOST et SMTP_FROM ne sont pas renseignés. */
-export function getMailConfig(): MailConfig | null {
-  const host = readEnv("SMTP_HOST");
-  const from = readEnv("SMTP_FROM");
+/**
+ * null tant que SMTP_HOST et SMTP_FROM ne sont pas renseignés. `env` permet
+ * d'évaluer des réglages candidats avant de les enregistrer.
+ */
+export function getMailConfig(env: Env = process.env): MailConfig | null {
+  const host = readEnv("SMTP_HOST", env);
+  const from = readEnv("SMTP_FROM", env);
   if (!host || !from) return null;
-  const port = Number(readEnv("SMTP_PORT")) || 587;
-  const redirection = readEnv("BOS_EMAIL_REDIRECTION");
-  const copie = readEnv("BOS_EMAIL_COPIE");
+  const port = Number(readEnv("SMTP_PORT", env)) || 587;
+  const redirection = readEnv("BOS_EMAIL_REDIRECTION", env);
+  const copie = readEnv("BOS_EMAIL_COPIE", env);
   return {
     host,
     port,
-    secure: readEnv("SMTP_SECURE") ? readEnv("SMTP_SECURE") === "true" : port === 465,
-    user: readEnv("SMTP_USER"),
-    password: process.env.SMTP_PASSWORD ?? null,
+    secure: readEnv("SMTP_SECURE", env) ? readEnv("SMTP_SECURE", env) === "true" : port === 465,
+    user: readEnv("SMTP_USER", env),
+    password: env.SMTP_PASSWORD ?? null,
     from,
     redirection: isEmail(redirection) ? redirection : null,
     copie: isEmail(copie) ? copie : null,

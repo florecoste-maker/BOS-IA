@@ -32,6 +32,8 @@ export const AUDIT_LABELS: Record<string, string> = {
   compte_modifie: "Compte modifié",
   mot_de_passe: "Mot de passe modifié",
   installation: "Installation du cockpit",
+  reglages_modifies: "Réglages du serveur modifiés",
+  reglages_refuses: "Réglages du serveur refusés (test en échec)",
 };
 
 /**

@@ -131,8 +131,11 @@ npm run lint
    les variables `NEXT_PUBLIC_*` de `.env.example` ne servent qu'à les changer et
    sont figées **au build** : après modification, redéployer.
 6. Agents IA : `ANTHROPIC_API_KEY` (console.anthropic.com → API Keys).
-7. Base de données : voir « Base de données » ci-dessous (`DB_HOST`, `DB_NAME`,
-   `DB_USER`, `DB_PASSWORD`).
+7. Base de données, e-mails, alertes : **cockpit → Connexions → « Réglages du
+   serveur »** (administrateurs). On y colle les valeurs de hPanel ; chaque
+   connexion est testée avant d'être écrite dans `~/bos-ia.env`, un échec ne
+   change rien. Aucun secret GitHub ni fichier à éditer (voir aussi « Base de
+   données » ci-dessous).
 8. Optionnel : `TIDYCAL_API_TOKEN` pour l'API (l'embed public vit déjà sur le site Horizons)
 9. Vérifier : `https://app.jamaliance.com/api/health` répond `{"ok":true}`, puis se
    connecter sur `https://app.jamaliance.com/login`.
@@ -171,11 +174,14 @@ Pour les données réelles (MySQL ou MariaDB Hostinger) :
 
 1. hPanel → **Bases de données** → **Gestion** : créer une base et un utilisateur
    (Hostinger préfixe les noms, par ex. `u123456789_bosia`).
-2. Ajouter dans les variables d'environnement de la Web App : `DB_HOST` (souvent
-   `localhost`, sinon l'hôte indiqué par hPanel), `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-   — ou une seule `DATABASE_URL=mysql://utilisateur:motdepasse@hote:3306/base`.
-3. Redémarrer / redéployer. Au premier accès, les tables `bos_*` sont créées et les
-   6 agents enregistrés. **Aucune donnée fictive** n'est insérée.
+2. Cockpit → `/app/integrations` → **Réglages du serveur** → « Base de données » :
+   nom de la base, utilisateur, mot de passe → **Tester et enregistrer**. La
+   connexion est testée (`localhost` puis `127.0.0.1`) ; en cas de succès les
+   réglages sont écrits dans `~/bos-ia.env` et le cockpit bascule aussitôt sur
+   MySQL, sans redémarrage. (Autres voies : secrets `DB_*` du dépôt + workflow
+   « Installation du cockpit », ou `DATABASE_URL` à la main.)
+3. Les tables `bos_*` sont créées et les 6 agents enregistrés au premier accès.
+   **Aucune donnée fictive** n'est insérée.
 4. Vérifier `/app/integrations` → carte « Base de données » : « MySQL connecté ».
 
 Les indicateurs sont tous calculés à partir des données :
@@ -271,7 +277,9 @@ Garde-fous :
 
 ### Configurer l'envoi (SMTP)
 
-Variables dans hPanel → Web App → Variables d'environnement, puis redéployer :
+Le plus simple : `/app/integrations` → **Réglages du serveur** → « Envoi des
+e-mails » (Hostinger, Google ou autre serveur ; connexion testée avant
+enregistrement, mode test proposé). Équivalent en variables :
 
 | Variable | Messagerie Hostinger | Google Workspace |
 | --- | --- | --- |

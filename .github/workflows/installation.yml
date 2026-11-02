@@ -93,6 +93,14 @@ jobs:
             echo
             echo "Réglages enregistrés sur le serveur : $(jq -r '.variables_enregistrees | if length == 0 then "aucun" else join(", ") end' reponse.json)"
             echo
+            # Base testée par le serveur avant enregistrement : un échec ne change rien au cockpit.
+            jq -r '.base_de_donnees // {statut: "inconnue"} |
+              if .statut == "connectee" then "Base de données : **connectée** (\(.hote)). Les tables bos_ sont créées au premier accès."
+              elif .statut == "non_configuree" then "Base de données : non configurée (mode démonstration)."
+              elif .statut == "refusee" then "Base de données : **refusée**, réglages non enregistrés, le cockpit reste inchangé. Raison : \(.erreur)"
+              elif .statut == "injoignable" then "Base de données : **injoignable** avec les réglages actuels. Raison : \(.erreur)"
+              else "Base de données : état inconnu (déployez la dernière version de main)." end' reponse.json
+            echo
             if [ -n "$code" ]; then
               echo "**Étape suivante :** ouvrez la page d'installation et choisissez le mot de passe administrateur (usage unique) :"
               echo

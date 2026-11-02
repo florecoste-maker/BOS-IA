@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { ServerSettings } from "@/components/server-settings";
 import { StatusPill } from "@/components/ui";
 
 type Overview = {
@@ -119,9 +120,18 @@ function SmtpTest({ defaut }: { defaut: string }) {
   );
 }
 
-export function IntegrationsPanel({ isAdmin = false }: { isAdmin?: boolean }) {
+export function IntegrationsPanel({
+  isAdmin = false,
+  reglagesServeur = false,
+}: {
+  isAdmin?: boolean;
+  /** Formulaire « Réglages du serveur » (administrateurs, hors Vercel). */
+  reglagesServeur?: boolean;
+}) {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Incrémenté après un réglage enregistré : les cartes d'état sont relues.
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +147,7 @@ export function IntegrationsPanel({ isAdmin = false }: { isAdmin?: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [version]);
 
   if (error) {
     return <p className="text-sm text-danger">{error}</p>;
@@ -147,7 +157,23 @@ export function IntegrationsPanel({ isAdmin = false }: { isAdmin?: boolean }) {
     return <p className="text-sm text-ink-muted">Vérification des connexions…</p>;
   }
 
+  const reglagesAFaire =
+    data.database.status !== "configured" || data.emails.status !== "configured" || data.alertes.status !== "configured";
+
   return (
+    <>
+    {isAdmin && reglagesServeur ? (
+      <details open={reglagesAFaire} className="mb-10 border-l-2 border-brand pl-4">
+        <summary className="cursor-pointer font-display text-lg font-semibold text-ink">
+          Réglages du serveur {reglagesAFaire ? "— à compléter" : ""}
+        </summary>
+        <p className="mt-1 mb-6 text-sm text-ink-muted">
+          Chaque connexion est testée avant d&apos;être enregistrée sur le serveur : une erreur ne change rien au
+          cockpit. Les mots de passe ne sont jamais réaffichés.
+        </p>
+        <ServerSettings alertes={data.alertes.adresse ?? ""} onSaved={() => setVersion((v) => v + 1)} />
+      </details>
+    ) : null}
     <div className="grid gap-8 lg:grid-cols-2">
       <article className="border-l-2 border-brand/40 pl-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -326,5 +352,6 @@ export function IntegrationsPanel({ isAdmin = false }: { isAdmin?: boolean }) {
         ) : null}
       </article>
     </div>
+    </>
   );
 }
