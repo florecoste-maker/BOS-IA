@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { brand } from "@/lib/brand";
 import { getAuthConfig, isVercel, safeNextPath } from "@/lib/auth";
+import { getRepository } from "@/lib/data";
 import { isDatabaseConfigured } from "@/lib/db/config";
 
 export const metadata: Metadata = {
@@ -22,6 +23,21 @@ const notices: Record<string, string> = {
   deja: "Le cockpit est déjà installé : connectez-vous.",
 };
 
+/**
+ * Formulaire proposé par défaut : « e-mail » seulement s'il existe au moins un
+ * compte nominatif actif (base MySQL reliée). Sinon, ou si la base ne répond
+ * pas, « mot de passe de secours » : le trousseau de l'iPhone ne peut plus
+ * envoyer une adresse e-mail sans compte derrière.
+ */
+async function hasActiveAccounts() {
+  if (!isDatabaseConfigured()) return false;
+  try {
+    return (await (await getRepository()).listUsers()).some((u) => u.actif);
+  } catch {
+    return false;
+  }
+}
+
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const params = await searchParams;
   const erreur = typeof params.erreur === "string" ? params.erreur : null;
@@ -29,11 +45,10 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const next = safeNextPath(typeof params.next === "string" ? params.next : null);
   // Noms des réglages en cause (jamais leurs valeurs) : manquant ou trop court.
   const problems = erreur === "config" ? getAuthConfig().problems : [];
-  // Sans base de données il n'existe aucun compte nominatif : mot de passe de secours par défaut.
   const mode =
     params.mode === "secours" || params.mode === "compte"
       ? params.mode
-      : erreur === "mdp" || !isDatabaseConfigured()
+      : erreur === "mdp" || !(await hasActiveAccounts())
         ? "secours"
         : "compte";
   const switchTo = (m: "secours" | "compte") => `/login?${new URLSearchParams({ mode: m, next })}`;
