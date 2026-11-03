@@ -1,16 +1,16 @@
 /**
  * Export CSV au format exact de l'import : un fichier exporté se réimporte tel
  * quel (restauration). Les liens internes (ids) sont remplacés par les clés
- * lisibles : code de session, e-mail d'apprenant, référence de dossier.
+ * lisibles : nom du client, code de mission, numéro de facture.
  */
-import type { Invoice, Learner, OpcoDossier, TrainingSession } from "@/lib/types";
+import type { Client, Invoice, Mission, Payment } from "@/lib/types";
 import { FIELDS, type ImportKind, type ImportValue } from "./schema";
 
 export interface ExportData {
-  sessions: TrainingSession[];
-  learners: Learner[];
-  dossiers: OpcoDossier[];
+  clients: Client[];
+  missions: Mission[];
   invoices: Invoice[];
+  payments: Payment[];
 }
 
 /** AAAA-MM-JJ → JJ/MM/AAAA. */
@@ -38,60 +38,56 @@ function quote(value: string) {
 
 /** Lignes (clé de champ → valeur) d'un type, dans l'ordre des données. */
 export function exportRecords(kind: ImportKind, data: ExportData): Array<Record<string, ImportValue | undefined>> {
-  const sessionCode = new Map(data.sessions.map((s) => [s.id, s.code]));
-  const learnerEmail = new Map(data.learners.map((l) => [l.id, l.email]));
-  const dossierRef = new Map(data.dossiers.map((d) => [d.id, d.reference]));
+  const clientName = new Map(data.clients.map((c) => [c.id, c.nom]));
+  const missionCode = new Map(data.missions.map((m) => [m.id, m.code]));
+  const invoiceNumber = new Map(data.invoices.map((i) => [i.id, i.numero]));
 
   switch (kind) {
-    case "sessions":
-      return data.sessions.map((s) => ({
-        code: s.code,
-        titre: s.titre,
-        debut: frDate(s.debut),
-        fin: frDate(s.fin),
-        formateur: s.formateur,
-        places: s.places,
-        inscrits: s.inscrits,
-        statut: s.statut,
-        qualiopi: s.qualiopiIndicateurs,
+    case "clients":
+      return data.clients.map((c) => ({
+        nom: c.nom,
+        contact: c.contact,
+        email: c.email,
+        telephone: c.telephone,
+        secteur: c.secteur,
+        statut: c.statut,
+        source: c.source,
+        notes: c.notes,
       }));
-    case "apprenants":
-      return data.learners.map((l) => ({
-        email: l.email,
-        nom: l.nom,
-        prenom: l.prenom,
-        entreprise: l.entreprise,
-        statut: l.status,
-        etape: l.pipelineStage,
-        session: l.sessionId ? sessionCode.get(l.sessionId) : undefined,
-        derniereActivite: l.derniereActivite,
-        comprehension: l.comprehensionValidee,
-        score: l.scoreQuiz,
-      }));
-    case "dossiers":
-      return data.dossiers.map((d) => ({
-        reference: d.reference,
-        organisme: d.organisme,
-        apprenant: learnerEmail.get(d.apprenantId),
-        session: sessionCode.get(d.sessionId),
-        montant: d.montant,
-        statut: d.status,
-        completude: d.completude,
-        pieces: d.piecesManquantes,
+    case "missions":
+      return data.missions.map((m) => ({
+        code: m.code,
+        titre: m.titre,
+        client: clientName.get(m.clientId),
+        type: m.type,
+        statut: m.statut,
+        montant: m.montantHT,
+        debut: frDate(m.debut),
+        fin: frDate(m.fin),
+        notes: m.notes,
       }));
     case "factures":
       return data.invoices.map((i) => ({
         numero: i.numero,
-        client: i.client,
-        emailClient: i.emailClient,
+        client: clientName.get(i.clientId),
+        mission: i.missionId ? missionCode.get(i.missionId) : undefined,
+        objet: i.objet,
         montant: i.montantHT,
+        tva: i.tauxTva,
         emiseLe: frDate(i.emiseLe),
         echeance: frDate(i.echeance),
         statut: i.status,
-        acompte: i.acomptePct,
         payeeLe: frDate(i.payeeLe),
         recurrence: i.recurrence,
-        dossier: i.dossierOpcoId ? dossierRef.get(i.dossierOpcoId) : undefined,
+      }));
+    case "paiements":
+      return data.payments.map((p) => ({
+        numero: p.numero,
+        facture: invoiceNumber.get(p.factureId),
+        montant: p.montant,
+        date: frDate(p.date),
+        mode: p.mode,
+        reference: p.reference,
       }));
   }
 }

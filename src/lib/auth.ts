@@ -74,7 +74,7 @@ export function checkPassword(candidate: string) {
 export interface SessionIdentity {
   /** Id du compte, ou « secours » pour le mot de passe partagé BOS_ADMIN_PASSWORD. */
   uid: string;
-  role: "admin" | "membre";
+  role: "admin" | "membre" | "client";
   nom: string;
 }
 
@@ -107,7 +107,7 @@ export function verifySessionToken(token: string | undefined, now = Date.now()):
     };
     if (typeof data.exp !== "number" || data.exp <= Math.floor(now / 1000)) return null;
     if (typeof data.u !== "string" || typeof data.n !== "string") return null;
-    if (data.r !== "admin" && data.r !== "membre") return null;
+    if (data.r !== "admin" && data.r !== "membre" && data.r !== "client") return null;
     return { uid: data.u, role: data.r, nom: data.n };
   } catch {
     return null;
@@ -145,6 +145,13 @@ export function clearLoginFailures(ip: string) {
 /** Chemin de retour après connexion : uniquement interne au cockpit. */
 export function safeNextPath(value: string | null | undefined) {
   if (!value || value.includes("\\")) return "/app";
-  if (value !== "/app" && !value.startsWith("/app/")) return "/app";
+  const inside = (base: string) => value === base || value.startsWith(`${base}/`);
+  if (!inside("/app") && !inside("/espace")) return "/app";
   return value;
+}
+
+/** Destination après connexion, dans la zone du rôle (cockpit ou espace client). */
+export function landingPath(role: SessionIdentity["role"], next: string) {
+  const zone = role === "client" ? "/espace" : "/app";
+  return next === zone || next.startsWith(`${zone}/`) ? next : zone;
 }

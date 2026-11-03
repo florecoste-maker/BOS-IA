@@ -1,6 +1,6 @@
 import { IMPORT_KINDS, templateCsv, type ImportKind } from "@/lib/import/schema";
 
-/** Modèle CSV prêt à remplir dans Excel : `/api/import/modele?type=apprenants`. */
+/** Modèle CSV prêt à remplir dans Excel : `/api/import/modele?type=clients`. */
 export function GET(request: Request) {
   const kind = new URL(request.url).searchParams.get("type") as ImportKind;
   if (!IMPORT_KINDS.some((k) => k.kind === kind)) {

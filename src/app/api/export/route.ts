@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Téléchargements depuis le cockpit (session requise) :
- * `?format=json` sauvegarde complète ; `?format=csv&type=apprenants` export
+ * `?format=json` sauvegarde complète ; `?format=csv&type=clients` export
  * au format de l'import, réimportable tel quel.
  */
 export async function GET(request: Request) {
@@ -25,13 +25,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Type inconnu" }, { status: 400 });
     }
     await audit(actor, "export", `CSV ${kind}`, { request });
-    const [sessions, learners, dossiers, invoices] = await Promise.all([
-      repo.getSessions(),
-      repo.getLearners(),
-      repo.getOpcoDossiers(),
+    const [clients, missions, invoices, payments] = await Promise.all([
+      repo.getClients(),
+      repo.getMissions(),
       repo.getInvoices(),
+      repo.getPayments(),
     ]);
-    return new Response(exportCsv(kind, { sessions, learners, dossiers, invoices }), {
+    return new Response(exportCsv(kind, { clients, missions, invoices, payments }), {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="bos-ia-${kind}-${date}.csv"`,

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { getDatabaseConfig } from "./config";
-import { daysLate, fromSqlDateTime, parseJsonArray, toSqlDateTime } from "./mysql";
+import { daysLate } from "../business";
+import { fromSqlDateTime, toSqlDateTime } from "./mysql";
 
 const KEYS = ["DATABASE_URL", "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"];
 const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
@@ -74,15 +75,12 @@ describe("Conversions MySQL", () => {
     assert.equal(fromSqlDateTime("2026-10-27 08:15:30.123"), iso);
   });
 
-  it("lit le JSON en objet (MySQL) comme en chaîne (MariaDB)", () => {
-    assert.deepEqual(parseJsonArray(["I4", "I11"]), ["I4", "I11"]);
-    assert.deepEqual(parseJsonArray('["I4","I11"]'), ["I4", "I11"]);
-    assert.deepEqual(parseJsonArray(null), []);
-  });
-
   it("calcule les jours de retard à partir de l'échéance", () => {
     assert.equal(daysLate("2026-10-17", "emise", "2026-10-27"), 10);
     assert.equal(daysLate("2026-11-01", "emise", "2026-10-27"), 0);
     assert.equal(daysLate("2026-10-17", "payee", "2026-10-27"), 0);
+    assert.equal(daysLate("2026-10-17", "annulee", "2026-10-27"), 0);
+    assert.equal(daysLate("2026-10-17", "brouillon", "2026-10-27"), 0);
+    assert.equal(daysLate("2026-10-17", "partiellement_payee", "2026-10-27"), 10);
   });
 });

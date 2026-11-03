@@ -1,17 +1,20 @@
+import { round2 } from "./business";
 import type {
   Agent,
   AgentAction,
+  Client,
   DashboardMetrics,
   Invoice,
   InvoiceRecurrence,
-  Learner,
-  OpcoDossier,
+  Mission,
+  Payment,
 } from "./types";
 
 export interface MetricsSnapshot {
-  learners: Learner[];
-  opcoDossiers: OpcoDossier[];
+  clients: Client[];
+  missions: Mission[];
   invoices: Invoice[];
+  payments: Payment[];
   agents: Agent[];
   agentActions: AgentAction[];
 }
@@ -58,16 +61,18 @@ export function paymentDelay(invoices: Invoice[], now = Date.now()) {
 
 /**
  * MRR : montant HT ramené au mois des factures d'abonnement dont la période
- * (émission + 1, 3 ou 12 mois) couvre aujourd'hui. Brouillons exclus.
+ * (émission + 1, 3 ou 12 mois) couvre aujourd'hui. Brouillons et factures annulées exclus.
  */
 export function monthlyRecurringRevenue(invoices: Invoice[], now = Date.now()) {
   const today = utcDay(now);
   const active = invoices.filter((i) => {
-    if (!i.recurrence || i.status === "brouillon") return false;
+    if (!i.recurrence || i.status === "brouillon" || i.status === "annulee") return false;
     const start = utcDay(i.emiseLe);
     return start <= today && today < addMonths(i.emiseLe, RECURRENCE_MONTHS[i.recurrence]);
   });
-  const hasSubscriptions = invoices.some((i) => i.recurrence && i.status !== "brouillon");
+  const hasSubscriptions = invoices.some(
+    (i) => i.recurrence && i.status !== "brouillon" && i.status !== "annulee",
+  );
   const total = active.reduce((sum, i) => sum + i.montantHT / RECURRENCE_MONTHS[i.recurrence!], 0);
   return {
     mrr: hasSubscriptions ? Math.round(total * 100) / 100 : null,
@@ -77,25 +82,31 @@ export function monthlyRecurringRevenue(invoices: Invoice[], now = Date.now()) {
 
 /** Indicateurs du cockpit, tous calculés à partir des données. */
 export function computeMetrics(data: MetricsSnapshot, now = Date.now()): DashboardMetrics {
-  const { learners, opcoDossiers, invoices, agents, agentActions } = data;
+  const { clients, missions, invoices, payments, agents, agentActions } = data;
   const delay = paymentDelay(invoices, now);
   const recurring = monthlyRecurringRevenue(invoices, now);
+  const monthStart = new Date(now).toISOString().slice(0, 8) + "01";
+  const todayIso = new Date(now).toISOString().slice(0, 10);
+  const open = invoices.filter((i) => i.status !== "brouillon" && i.status !== "annulee");
   return {
-    apprenantsActifs: learners.filter((l) =>
-      ["en_formation", "inscrit", "certifie"].includes(l.status),
-    ).length,
-    ghostLearners: learners.filter((l) => l.status === "inactif").length,
-    dossiersOpcoOuverts: opcoDossiers.filter((d) =>
-      ["brouillon", "completude", "transmis", "accepte"].includes(d.status),
-    ).length,
+    clientsActifs: clients.filter((c) => c.statut === "actif").length,
+    prospects: clients.filter((c) => c.statut === "prospect").length,
+    missionsEnCours: missions.filter((m) => m.statut === "en_cours").length,
+    carnetCommandes: round2(
+      missions
+        .filter((m) => ["signee", "en_cours", "livree"].includes(m.statut))
+        .reduce((sum, m) => sum + m.montantHT, 0),
+    ),
     facturesEnRetard: invoices.filter((i) => i.joursRetard > 0).length,
+    aEncaisser: round2(open.reduce((sum, i) => sum + i.resteDu, 0)),
+    encaisseMois: round2(
+      payments.filter((p) => p.date >= monthStart && p.date <= todayIso).reduce((sum, p) => sum + p.montant, 0),
+    ),
     delaiPaiementMoyen: delay.moyenne,
     delaiPaiementBase: delay.base,
     mrr: recurring.mrr,
     abonnementsActifs: recurring.actifs,
     agentsActifs: agents.filter((a) => a.status === "actif").length,
-    actionsHitl: agentActions.filter((a) => a.requiresHitl && a.hitlStatus === "pending")
-      .length,
-    pipelineCompletions: learners.filter((l) => l.pipelineStage === "completion").length,
+    actionsHitl: agentActions.filter((a) => a.requiresHitl && a.hitlStatus === "pending").length,
   };
 }

@@ -1,99 +1,175 @@
-/** System of Record — domaines métier BOS-IA */
+/** Données de référence — domaines métier de l'agence Jamaliance (agents IA pour les entreprises). */
 
-export type LearnerStatus =
-  | "lead"
-  | "inscrit"
-  | "en_formation"
-  | "inactif"
-  | "certifie"
-  | "abandon";
+/** Cycle de vie d'un client : du premier contact à la fin de la relation. */
+export type ClientStatus = "prospect" | "actif" | "inactif" | "perdu";
 
-export type PipelineStage =
-  | "lead"
-  | "inscription"
-  | "parcours"
-  | "evaluation"
-  | "certification"
-  | "completion";
-
-export interface Learner {
+/** Entreprise cliente (ou prospect), avec son contact principal. */
+export interface Client {
   id: string;
+  /** Raison sociale : identifiant lisible et unique. */
   nom: string;
-  prenom: string;
-  email: string;
-  entreprise?: string;
-  status: LearnerStatus;
-  pipelineStage: PipelineStage;
-  sessionId?: string;
+  /** Nom du contact principal. */
+  contact?: string;
+  /** Adresse du contact : sert aux e-mails approuvés et aux relances de factures. */
+  email?: string;
+  telephone?: string;
+  secteur?: string;
+  statut: ClientStatus;
+  /** Origine du contact (site, recommandation, salon…). */
+  source?: string;
+  notes?: string;
+  creeLe: string;
   derniereActivite: string;
-  comprehensionValidee: boolean;
-  scoreQuiz?: number;
-  createdAt: string;
 }
 
-export interface TrainingSession {
+/**
+ * Personne rattachée à l'espace d'une entreprise cliente : interlocuteur chez
+ * le client, ou contact de ce client (ses propres clients, prospects,
+ * fournisseurs), sur lesquels travailleront ses agents IA.
+ */
+export type ContactCategory = "interlocuteur" | "client" | "prospect" | "fournisseur" | "autre";
+
+export interface Contact {
   id: string;
-  titre: string;
+  /** Espace (entreprise cliente) auquel appartient le contact. */
+  clientId: string;
+  nom: string;
+  prenom?: string;
+  fonction?: string;
+  email?: string;
+  telephone?: string;
+  categorie: ContactCategory;
+  /** Interlocuteur principal de Jamaliance dans cette entreprise. */
+  principal: boolean;
+  notes?: string;
+  creeLe: string;
+}
+
+/** Nature d'une mission vendue par l'agence. */
+export type MissionType = "agent_ia" | "automatisation" | "conseil" | "abonnement" | "autre";
+
+export type MissionStatus = "proposition" | "signee" | "en_cours" | "livree" | "terminee" | "annulee";
+
+/** Prestation pour un client : projet d'agent IA, automatisation, accompagnement, abonnement… */
+export interface Mission {
+  id: string;
+  /** Référence lisible et unique, ex. MIS-2026-0001. */
   code: string;
-  debut: string;
-  fin: string;
-  formateur: string;
-  places: number;
-  inscrits: number;
-  statut: "planifiee" | "en_cours" | "terminee";
-  qualiopiIndicateurs: string[];
+  titre: string;
+  clientId: string;
+  type: MissionType;
+  statut: MissionStatus;
+  montantHT: number;
+  /** AAAA-MM-JJ */
+  debut?: string;
+  /** Livraison ou fin prévue (AAAA-MM-JJ). */
+  fin?: string;
+  notes?: string;
+  creeLe: string;
 }
 
-export type OpcoStatus =
-  | "brouillon"
-  | "completude"
-  | "transmis"
-  | "accepte"
-  | "refuse"
-  | "paye";
-
-export interface OpcoDossier {
-  id: string;
-  reference: string;
-  organisme: string;
-  apprenantId: string;
-  sessionId: string;
-  montant: number;
-  status: OpcoStatus;
-  completude: number;
-  piecesManquantes: string[];
-  updatedAt: string;
-}
-
+/**
+ * « payée » et « partiellement payée » découlent des paiements enregistrés ;
+ * « annulée » reste un geste humain.
+ */
 export type InvoiceStatus =
   | "brouillon"
   | "emise"
-  | "acompte_paye"
-  | "solde_du"
+  | "partiellement_payee"
   | "payee"
   | "relance"
-  | "impayee";
+  | "impayee"
+  | "annulee";
+
+export type InvoiceRecurrence = "mensuel" | "trimestriel" | "annuel";
 
 export interface Invoice {
   id: string;
   numero: string;
+  clientId: string;
+  /** Nom du client (lu sur la fiche client). */
   client: string;
-  dossierOpcoId?: string;
+  missionId?: string;
+  /** Objet de la facture, ex. « Agent IA support client — acompte ». */
+  objet?: string;
   montantHT: number;
-  acomptePct: number;
+  /** Taux de TVA en % (20 par défaut, 0 en franchise). */
+  tauxTva: number;
+  montantTTC: number;
   status: InvoiceStatus;
   emiseLe: string;
   echeance: string;
   joursRetard: number;
-  /** Adresse du client pour les relances (facultative). */
+  /** Adresse du client pour les relances (lue sur la fiche client). */
   emailClient?: string;
-  /** Date de paiement effectif (AAAA-MM-JJ) : sert au délai de paiement moyen. */
+  /** Total des paiements enregistrés (TTC). */
+  montantPaye: number;
+  /** Reste à encaisser (TTC) ; 0 pour une facture payée ou annulée. */
+  resteDu: number;
+  /** Date du paiement qui a soldé la facture (AAAA-MM-JJ) : sert au délai de paiement moyen. */
   payeeLe?: string;
   /** Facture d'abonnement : sert au MRR (montant ramené au mois). */
   recurrence?: InvoiceRecurrence;
 }
 
-export type InvoiceRecurrence = "mensuel" | "trimestriel" | "annuel";
+/** « expiré » se déduit de la date de validité d'un devis envoyé. */
+export type QuoteStatus = "brouillon" | "envoye" | "accepte" | "refuse" | "expire" | "facture";
+
+export interface QuoteLine {
+  designation: string;
+  quantite: number;
+  prixUnitaireHT: number;
+}
+
+export interface Quote {
+  id: string;
+  /** DEV-AAAA-NNNN */
+  numero: string;
+  clientId: string;
+  /** Nom du client (lu sur la fiche client). */
+  client: string;
+  missionId?: string;
+  objet: string;
+  lignes: QuoteLine[];
+  montantHT: number;
+  tauxTva: number;
+  montantTTC: number;
+  status: QuoteStatus;
+  emisLe: string;
+  valableJusquau: string;
+  /** Facture créée à partir de ce devis. */
+  factureId?: string;
+  /** Réponse du client depuis son espace (acceptation ou refus) : date et auteur. */
+  reponduLe?: string;
+  reponduPar?: string;
+  creeLe: string;
+}
+
+export type PaymentMode =
+  | "virement"
+  | "carte"
+  | "prelevement"
+  | "cheque"
+  | "especes"
+  | "stripe"
+  | "paypal"
+  | "autre";
+
+/** Règlement reçu pour une facture (acompte, solde ou paiement unique). */
+export interface Payment {
+  id: string;
+  /** Numéro lisible et unique, ex. REG-2026-0001. */
+  numero: string;
+  factureId: string;
+  /** Montant TTC reçu. */
+  montant: number;
+  /** AAAA-MM-JJ */
+  date: string;
+  mode: PaymentMode;
+  /** Référence bancaire, numéro de transaction… */
+  reference?: string;
+  creeLe: string;
+}
 
 export type AgentTier = "QAA" | "IPOA" | "FCA" | "MDGA";
 export type AgentAutonomy =
@@ -133,8 +209,8 @@ export interface AgentAction {
 }
 
 export interface EmailDraft {
-  /** « apprenant » : l'apprenant `refId` ; « facture » : le client de la facture `refId`. */
-  cible: "apprenant" | "facture";
+  /** « client » : le contact du client `refId` ; « facture » : le client de la facture `refId`. */
+  cible: "client" | "facture";
   refId: string;
   objet: string;
   corps: string;
@@ -142,11 +218,11 @@ export interface EmailDraft {
   destinataire?: { nom: string; email: string | null };
 }
 
-export type OperationType = "statut_apprenant" | "statut_dossier" | "statut_facture";
+export type OperationType = "statut_client" | "statut_mission" | "statut_facture";
 
 export interface StatusOperation {
   type: OperationType;
-  /** id de l'apprenant, du dossier OPCO ou de la facture. */
+  /** id du client, de la mission ou de la facture. */
   refId: string;
   /** Nouveau statut (liste fermée par type, voir lib/actions/operations). */
   valeur: string;
@@ -162,11 +238,17 @@ export interface ActionExecution {
 }
 
 export interface DashboardMetrics {
-  apprenantsActifs: number;
-  ghostLearners: number;
-  dossiersOpcoOuverts: number;
+  clientsActifs: number;
+  prospects: number;
+  missionsEnCours: number;
+  /** Missions signées, en cours ou livrées (HT). */
+  carnetCommandes: number;
   facturesEnRetard: number;
-  /** Jours entre émission et paiement, moyenne sur 12 mois ; null sans facture payée datée. */
+  /** Reste à encaisser sur les factures émises (TTC). */
+  aEncaisser: number;
+  /** Paiements reçus depuis le 1er du mois (TTC). */
+  encaisseMois: number;
+  /** Jours entre émission et paiement complet, moyenne sur 12 mois ; null sans facture payée datée. */
   delaiPaiementMoyen: number | null;
   /** Nombre de factures payées prises en compte dans le délai moyen. */
   delaiPaiementBase: number;
@@ -176,7 +258,6 @@ export interface DashboardMetrics {
   abonnementsActifs: number;
   agentsActifs: number;
   actionsHitl: number;
-  pipelineCompletions: number;
 }
 
 /** Journal d'une exécution d'agent (manuelle ou planifiée). */
@@ -197,7 +278,10 @@ export interface User {
   id: string;
   email: string;
   nom: string;
-  role: "admin" | "membre";
+  /** « client » : compte d'une entreprise cliente, limité à son espace. */
+  role: "admin" | "membre" | "client";
+  /** Espace d'un compte client (fixé à la création, jamais modifiable). */
+  clientId?: string;
   actif: boolean;
   creeLe: string;
   derniereConnexion?: string;

@@ -5,12 +5,22 @@ import { StatusPill } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import type { User } from "@/lib/types";
 
-const input = "mt-1 block w-full border border-line bg-surface px-2 py-1.5";
+const input = "mt-1 block w-full border border-line bg-surface px-2 py-1.5 text-base";
 
-export function UsersClient({ initialUsers, selfId }: { initialUsers: User[]; selfId: string }) {
+export function UsersClient({
+  initialUsers,
+  selfId,
+  clients,
+}: {
+  initialUsers: User[];
+  selfId: string;
+  /** Entreprises clientes auxquelles rattacher un compte client. */
+  clients: Array<{ id: string; nom: string }>;
+}) {
   const [users, setUsers] = useState(initialUsers);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
-  const [form, setForm] = useState({ email: "", nom: "", role: "membre", motDePasse: "" });
+  const [form, setForm] = useState({ email: "", nom: "", role: "membre", clientId: "", motDePasse: "" });
+  const clientName = new Map(clients.map((c) => [c.id, c.nom]));
   const [pending, startTransition] = useTransition();
 
   async function call(method: "POST" | "PATCH", body: object, success: string) {
@@ -34,7 +44,7 @@ export function UsersClient({ initialUsers, selfId }: { initialUsers: User[]; se
     e.preventDefault();
     startTransition(async () => {
       if (await call("POST", form, `Compte créé pour ${form.nom}`)) {
-        setForm({ email: "", nom: "", role: "membre", motDePasse: "" });
+        setForm({ email: "", nom: "", role: "membre", clientId: "", motDePasse: "" });
       }
     });
   }
@@ -83,6 +93,11 @@ export function UsersClient({ initialUsers, selfId }: { initialUsers: User[]; se
                 </p>
               </div>
               <StatusPill label={user.actif ? "Actif" : "Désactivé"} tone={user.actif ? "ok" : "danger"} />
+              {user.role === "client" ? (
+                <span className="text-xs font-semibold text-nexus">
+                  Compte client · {clientName.get(user.clientId ?? "") ?? "entreprise inconnue"}
+                </span>
+              ) : (
               <select
                 value={user.role}
                 disabled={pending || user.id === selfId}
@@ -93,6 +108,7 @@ export function UsersClient({ initialUsers, selfId }: { initialUsers: User[]; se
                 <option value="membre">Membre</option>
                 <option value="admin">Administrateur</option>
               </select>
+              )}
               <button
                 type="button"
                 disabled={pending}
@@ -137,8 +153,27 @@ export function UsersClient({ initialUsers, selfId }: { initialUsers: User[]; se
           <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={input}>
             <option value="membre">Membre : travail courant</option>
             <option value="admin">Administrateur : + comptes et journal</option>
+            <option value="client">Client : voit seulement l&apos;espace de son entreprise</option>
           </select>
         </label>
+        {form.role === "client" ? (
+          <label>
+            Entreprise du compte (définitif)
+            <select
+              required
+              value={form.clientId}
+              onChange={(e) => setForm({ ...form, clientId: e.target.value })}
+              className={input}
+            >
+              <option value="">— Choisir —</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nom}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label>
           Mot de passe initial (12 caractères minimum)
           <input

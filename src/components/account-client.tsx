@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-const input = "mt-1 block w-full border border-line bg-surface px-2 py-1.5";
+const input = "mt-1 block w-full border border-line bg-surface px-2 py-1.5 text-base";
 
 export function AccountClient() {
   const [form, setForm] = useState({ actuel: "", nouveau: "", confirmation: "" });

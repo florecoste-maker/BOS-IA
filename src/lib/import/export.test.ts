@@ -7,10 +7,10 @@ import { parseImport } from "./schema";
 
 function data(): ExportData {
   return {
-    sessions: store.getSessions(),
-    learners: store.getLearners(),
-    dossiers: store.getOpcoDossiers(),
+    clients: store.getClients(),
+    missions: store.getMissions(),
     invoices: store.getInvoices(),
+    payments: store.getPayments(),
   };
 }
 
@@ -23,58 +23,66 @@ function roundTrip(kind: Parameters<typeof exportCsv>[0], input: ExportData) {
 }
 
 describe("Export CSV réimportable (restauration)", () => {
-  it("restitue les sessions à l'identique", () => {
+  it("restitue les clients à l'identique", () => {
     const d = data();
-    const rows = roundTrip("sessions", d);
-    assert.equal(rows.length, d.sessions.length);
-    d.sessions.forEach((s, i) => {
-      assert.equal(rows[i].code, s.code);
-      assert.equal(rows[i].titre, s.titre);
-      assert.equal(rows[i].debut, s.debut);
-      assert.equal(rows[i].fin, s.fin);
-      assert.equal(rows[i].places, s.places);
-      assert.equal(rows[i].statut, s.statut);
-      assert.deepEqual(rows[i].qualiopi, s.qualiopiIndicateurs);
+    const rows = roundTrip("clients", d);
+    assert.equal(rows.length, d.clients.length);
+    d.clients.forEach((c, i) => {
+      assert.equal(rows[i].nom, c.nom);
+      assert.equal(rows[i].contact, c.contact ?? null);
+      assert.equal(rows[i].email, c.email ?? null);
+      assert.equal(rows[i].telephone, c.telephone ?? null);
+      assert.equal(rows[i].statut, c.statut);
+      assert.equal(rows[i].source, c.source ?? null);
+      assert.equal(rows[i].notes, c.notes ?? null);
     });
   });
 
-  it("restitue les apprenants avec leur session et leur dernière activité", () => {
+  it("restitue les missions avec leur client, leurs dates et leur montant", () => {
     const d = data();
-    const rows = roundTrip("apprenants", d);
-    d.learners.forEach((l, i) => {
-      assert.equal(rows[i].email, l.email.toLowerCase());
-      assert.equal(rows[i].statut, l.status);
-      assert.equal(rows[i].etape, l.pipelineStage);
-      assert.equal(rows[i].session, d.sessions.find((s) => s.id === l.sessionId)?.code ?? null);
-      assert.equal(rows[i].derniereActivite, l.derniereActivite);
-      assert.equal(rows[i].comprehension, l.comprehensionValidee);
-      assert.equal(rows[i].score, l.scoreQuiz ?? null);
+    d.missions[0] = { ...d.missions[0], montantHT: 4800.5 };
+    const rows = roundTrip("missions", d);
+    d.missions.forEach((m, i) => {
+      assert.equal(rows[i].code, m.code);
+      assert.equal(rows[i].client, d.clients.find((c) => c.id === m.clientId)!.nom);
+      assert.equal(rows[i].type, m.type);
+      assert.equal(rows[i].statut, m.statut);
+      assert.equal(rows[i].montant, m.montantHT);
+      assert.equal(rows[i].debut, m.debut ?? null);
+      assert.equal(rows[i].fin, m.fin ?? null);
     });
   });
 
-  it("restitue dossiers et factures (montants, pièces, paiement, abonnement)", () => {
+  it("restitue factures (TVA, mission, solde, abonnement) et paiements", () => {
     const d = data();
-    d.dossiers[1] = { ...d.dossiers[1], montant: 1490.5, piecesManquantes: ["Attestation, signée"] };
-    const dossiers = roundTrip("dossiers", d);
-    assert.equal(dossiers[1].montant, 1490.5);
-    assert.deepEqual(dossiers[1].pieces, ["Attestation, signée"], "virgule dans une pièce conservée");
-    assert.equal(dossiers[0].apprenant, d.learners.find((l) => l.id === d.dossiers[0].apprenantId)!.email);
-
     const factures = roundTrip("factures", d);
     d.invoices.forEach((inv, i) => {
       assert.equal(factures[i].numero, inv.numero);
+      assert.equal(factures[i].client, inv.client);
+      assert.equal(factures[i].mission, d.missions.find((m) => m.id === inv.missionId)?.code ?? null);
       assert.equal(factures[i].montant, inv.montantHT);
+      assert.equal(factures[i].tva, inv.tauxTva);
       assert.equal(factures[i].emiseLe, inv.emiseLe);
       assert.equal(factures[i].statut, inv.status);
       assert.equal(factures[i].payeeLe, inv.payeeLe ?? null);
       assert.equal(factures[i].recurrence, inv.recurrence ?? null);
     });
+
+    const paiements = roundTrip("paiements", d);
+    d.payments.forEach((p, i) => {
+      assert.equal(paiements[i].numero, p.numero);
+      assert.equal(paiements[i].facture, d.invoices.find((inv) => inv.id === p.factureId)!.numero);
+      assert.equal(paiements[i].montant, p.montant);
+      assert.equal(paiements[i].date, p.date);
+      assert.equal(paiements[i].mode, p.mode);
+    });
   });
 
   it("protège les cellules contenant « ; », guillemets et retours à la ligne", () => {
     const d = data();
-    d.sessions[0] = { ...d.sessions[0], titre: 'Atelier "IA"; niveau 1\nen ligne' };
-    const rows = roundTrip("sessions", d);
-    assert.equal(rows[0].titre, 'Atelier "IA"; niveau 1\nen ligne');
+    d.clients[0] = { ...d.clients[0], nom: 'Atelier "Nord"; SARL', notes: "Ligne 1\nLigne 2 ; fin" };
+    const rows = roundTrip("clients", d);
+    assert.equal(rows[0].nom, 'Atelier "Nord"; SARL');
+    assert.equal(rows[0].notes, "Ligne 1\nLigne 2 ; fin");
   });
 });

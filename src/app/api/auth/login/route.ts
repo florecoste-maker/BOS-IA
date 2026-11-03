@@ -7,6 +7,7 @@ import {
   createSessionToken,
   getAuthConfig,
   isLoginBlocked,
+  landingPath,
   recordLoginFailure,
   safeNextPath,
   type SessionIdentity,
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
     await audit(actor, "connexion", email, { request });
   }
 
-  const response = redirectTo(next);
+  const response = redirectTo(landingPath(identity.role, next));
   response.cookies.set(SESSION_COOKIE, createSessionToken(identity), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

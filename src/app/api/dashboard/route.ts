@@ -5,21 +5,24 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const repo = await getRepository();
-  const [metrics, sessions, learners, dossiers, invoices, agents] = await Promise.all([
+  const [metrics, clients, missions, invoices, payments, agents] = await Promise.all([
     repo.getMetrics(),
-    repo.getSessions(),
-    repo.getLearners(),
-    repo.getOpcoDossiers(),
+    repo.getClients(),
+    repo.getMissions(),
     repo.getInvoices(),
+    repo.getPayments(),
     repo.getAgents(),
   ]);
   return NextResponse.json({
     mode: repo.mode,
     metrics,
-    pillars: {
-      lms: { sessions: sessions.length, learners: learners.length },
-      erp: { dossiers: dossiers.length, invoices: invoices.length },
-      nexus: { agents: agents.length, hitl: metrics.actionsHitl },
+    totaux: {
+      clients: clients.length,
+      missions: missions.length,
+      factures: invoices.length,
+      paiements: payments.length,
+      agents: agents.length,
+      hitl: metrics.actionsHitl,
     },
   });
 }

@@ -12,7 +12,7 @@ export const brand = {
   /** Adresse retenue pour le cockpit (décision du 2 nov. 2026). */
   appUrl: "https://app.jamaliance.com",
   description:
-    "BOS-IA — cockpit opérationnel Jamaliance (formation, finance, agents IA). La vitrine publique reste sur jamaliance.com.",
+    "BOS-IA — cockpit opérationnel Jamaliance (clients, missions, factures, paiements, agents IA). La vitrine publique reste sur jamaliance.com.",
 } as const;
 
 /** Anciennes adresses du cockpit, abandonnées : jamais affichées ni utilisées dans les liens. */

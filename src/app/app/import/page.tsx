@@ -12,13 +12,13 @@ export default function ImportPage() {
       <SectionTitle
         eyebrow="Données"
         title="Import CSV / Excel"
-        description="Chargez vos sessions, apprenants, dossiers OPCO et factures depuis un tableur. Vérifiez d'abord : rien n'est enregistré tant qu'une ligne est en erreur."
+        description="Chargez vos clients, missions, factures et paiements depuis un tableur (facultatif : tout se saisit aussi dans le cockpit). Vérifiez d'abord : rien n'est enregistré tant qu'une ligne est en erreur."
       />
 
       {!enabled ? (
         <p className="mb-8 border-l-2 border-warn bg-surface px-3 py-2 text-sm">
-          L&apos;import nécessite la base MySQL : configurez DB_HOST, DB_NAME, DB_USER et
-          DB_PASSWORD dans hPanel (voir Connexions), puis redémarrez.
+          L&apos;import nécessite la base MySQL : Connexions → Réglages du serveur → Base de
+          données.
         </p>
       ) : null}
 
@@ -31,15 +31,15 @@ export default function ImportPage() {
         <h2 className="font-display text-xl font-semibold">Mode d&apos;emploi</h2>
         <ol className="mt-3 list-decimal space-y-1 pl-5 text-ink-muted">
           <li>
-            Importez dans cet ordre : sessions, apprenants, dossiers OPCO, factures (chaque
-            type fait référence au précédent).
+            Importez dans cet ordre : clients, missions, factures, paiements (chaque type
+            fait référence au précédent).
           </li>
           <li>
             Téléchargez le modèle, remplissez-le dans Excel puis enregistrez en .xlsx ou en
             CSV. La première feuille est lue ; la première ligne contient les en-têtes.
           </li>
           <li>
-            Une ligne déjà présente (même code, e-mail, référence ou numéro) est mise à jour ;
+            Une ligne déjà présente (même nom de client, code de mission ou numéro) est mise à jour ;
             une cellule vide conserve la valeur enregistrée.
           </li>
         </ol>

@@ -7,9 +7,10 @@ import { brand } from "@/lib/brand";
 
 const links = [
   { href: "/app", label: "Pilotage", exact: true },
-  { href: "/app/formation", label: "Formation" },
-  { href: "/app/finance", label: "Finance" },
-  { href: "/app/agents", label: "Digital Nexus" },
+  { href: "/app/clients", label: "Clients" },
+  { href: "/app/devis", label: "Devis" },
+  { href: "/app/finance", label: "Factures" },
+  { href: "/app/agents", label: "Agents IA" },
   { href: "/app/import", label: "Import" },
   { href: "/app/integrations", label: "Connexions" },
 ];
