@@ -79,6 +79,15 @@ export interface SessionIdentity {
   nom: string;
 }
 
+/**
+ * Identifiant sous lequel le trousseau (iCloud, gestionnaire de mots de passe)
+ * range le mot de passe administrateur : le même sur la page d'installation et
+ * sur le formulaire de secours, sinon le mot de passe enregistré n'est jamais
+ * proposé à la connexion. Valeur historique de la page d'installation, gardée
+ * pour retrouver les mots de passe déjà enregistrés.
+ */
+export const KEYCHAIN_USERNAME = "administrateur";
+
 export const SECOURS: SessionIdentity = { uid: "secours", role: "admin", nom: "Compte de secours" };
 
 export function createSessionToken(identity: SessionIdentity = SECOURS, now = Date.now()) {

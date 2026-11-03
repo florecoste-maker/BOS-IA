@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   checkPassword,
@@ -125,5 +126,14 @@ describe("Connexion sans effet : raison visible", () => {
     assert.equal(markedLanding("/app"), "/app?connecte=1");
     assert.equal(markedLanding("/app/clients?id=4"), "/app/clients?id=4&connecte=1");
     assert.equal(markedLanding("/espace"), "/espace?connecte=1");
+  });
+});
+
+describe("Trousseau iPhone : même identifiant à l'installation et à la connexion", () => {
+  it("les deux formulaires enregistrent et cherchent le mot de passe sous KEYCHAIN_USERNAME", () => {
+    for (const page of ["src/app/installation/page.tsx", "src/app/login/page.tsx"]) {
+      const source = readFileSync(page, "utf8");
+      assert.match(source, /name="username"\s+value=\{KEYCHAIN_USERNAME\}/, page);
+    }
   });
 });

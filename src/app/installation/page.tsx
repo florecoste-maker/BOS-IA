@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { brand } from "@/lib/brand";
-import { getAuthConfig, isVercel } from "@/lib/auth";
+import { KEYCHAIN_USERNAME, getAuthConfig, isVercel } from "@/lib/auth";
 import { loadPersistentEnv } from "@/lib/env-files";
 import { checkResetCode, ensureInstallationCode } from "@/lib/installation/code";
 
@@ -61,7 +61,8 @@ export default async function InstallationPage({ searchParams }: PageProps<"/ins
         <>
           <p className="mt-4 text-sm text-ink-muted">
             Choisissez le mot de passe administrateur. Il est enregistré uniquement sur le serveur
-            Hostinger ; notez-le dans votre gestionnaire de mots de passe.
+            Hostinger. Sur iPhone, acceptez quand Safari propose de l&apos;enregistrer (sous
+            « {KEYCHAIN_USERNAME} ») : il le proposera ensuite sur la page de connexion.
           </p>
           {erreur && messages[erreur] ? (
             <p className="mt-6 border-l-2 border-danger bg-surface px-3 py-2 text-sm">{messages[erreur]}</p>
@@ -71,7 +72,7 @@ export default async function InstallationPage({ searchParams }: PageProps<"/ins
               Code d&apos;installation
               <input name="code" defaultValue={code} required autoComplete="off" className={inputClass} />
             </label>
-            <input type="text" name="username" value="administrateur" autoComplete="username" readOnly hidden />
+            <input type="text" name="username" value={KEYCHAIN_USERNAME} autoComplete="username" readOnly hidden />
             <label className="block text-sm font-medium text-ink">
               Mot de passe administrateur (12 caractères minimum)
               <input type="password" name="password" required minLength={12} autoComplete="new-password" className={inputClass} />

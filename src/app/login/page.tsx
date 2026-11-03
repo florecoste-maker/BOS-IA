@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { brand } from "@/lib/brand";
-import { getAuthConfig, isVercel, safeNextPath } from "@/lib/auth";
+import { KEYCHAIN_USERNAME, getAuthConfig, isVercel, safeNextPath } from "@/lib/auth";
 import { getRepository } from "@/lib/data";
 import { isDatabaseConfigured } from "@/lib/db/config";
 
@@ -89,14 +89,15 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <input type="hidden" name="next" value={next} />
           <input type="hidden" name="mode" value="secours" />
           {/*
-            Identifiant fixe pour le trousseau iCloud / gestionnaire de mots de passe :
-            le mot de passe de secours est enregistré sous « secours », jamais sous
-            une adresse e-mail (sinon Safari remplit l'e-mail et la connexion échoue).
+            Identifiant fixe pour le trousseau iCloud / gestionnaire de mots de passe,
+            le même que sur la page d'installation (KEYCHAIN_USERNAME) : Safari propose
+            ici le mot de passe enregistré au moment de l'installation ou de la
+            réinitialisation, jamais une entrée liée à une adresse e-mail.
           */}
           <input
             type="text"
             name="username"
-            value="secours"
+            value={KEYCHAIN_USERNAME}
             autoComplete="username"
             readOnly
             hidden
@@ -114,7 +115,8 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
               className="mt-1 block w-full border border-line bg-surface px-3 py-2 text-base text-ink"
             />
             <span className="mt-1 block text-xs font-normal text-ink-muted">
-              Celui choisi avec le lien d&apos;installation (12 caractères minimum).
+              Celui choisi avec le lien d&apos;installation ou de réinitialisation. Sur iPhone,
+              touchez le champ : Safari propose « {KEYCHAIN_USERNAME} ».
             </span>
           </label>
           <button
