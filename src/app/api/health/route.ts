@@ -4,6 +4,7 @@ import { getAuthConfig } from "@/lib/auth";
 import { getEnvDiagnostic } from "@/lib/env-diagnostic";
 import { retryPersistentEnv } from "@/lib/env-files";
 import { runHealthChecks } from "@/lib/health";
+import { loginTrace } from "@/lib/login-trace";
 
 export const dynamic = "force-dynamic";
 
@@ -30,5 +31,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Secret invalide" }, { status: 401 });
   }
   const health = await runHealthChecks();
-  return NextResponse.json({ service: "bos-ia", ...health }, { status: health.ok ? 200 : 503 });
+  // `connexions` : dernière tentative et dernier retour sur le cockpit (ce processus), sans secret.
+  return NextResponse.json({ service: "bos-ia", ...health, connexions: loginTrace() }, { status: health.ok ? 200 : 503 });
 }

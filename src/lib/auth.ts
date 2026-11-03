@@ -115,6 +115,26 @@ export function verifySessionToken(token: string | undefined, now = Date.now()):
   }
 }
 
+/** Raison d'un refus de session (diagnostic) : jamais le contenu du jeton. */
+export function sessionTokenStatus(token: string | undefined, now = Date.now()): "absente" | "invalide" | "expiree" | "valide" {
+  if (!token) return "absente";
+  if (verifySessionToken(token, now)) return "valide";
+  const { secret } = getAuthConfig();
+  const [payload, signature] = token.split(".");
+  if (!secret || !payload || !signature || !safeEqual(signature, sign(payload, secret))) return "invalide";
+  return "expiree";
+}
+
+/** Marque ajoutée à l'adresse de destination après une connexion acceptée. */
+export const LOGIN_MARK = "connecte";
+
+/** Destination après connexion, marquée : un retour sans session se voit (cookie refusé par le navigateur). */
+export function markedLanding(path: string) {
+  const url = new URL(path, "http://cockpit.invalid");
+  url.searchParams.set(LOGIN_MARK, "1");
+  return `${url.pathname}${url.search}`;
+}
+
 /** Limite les essais de mot de passe : 5 échecs par IP et par quart d'heure. */
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_FAILURES = 5;

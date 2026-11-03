@@ -5,7 +5,9 @@ import {
   createSessionToken,
   getAuthConfig,
   isLoginBlocked,
+  markedLanding,
   recordLoginFailure,
+  sessionTokenStatus,
   safeNextPath,
   verifySessionToken,
 } from "./auth";
@@ -93,5 +95,35 @@ describe("Secret de session dérivé (Vercel)", () => {
     assert.equal(verifySessionToken(token), null, "changer le mot de passe ferme les sessions");
     process.env.BOS_ADMIN_PASSWORD = "court";
     assert.deepEqual(getAuthConfig().problems, ["BOS_ADMIN_PASSWORD trop court (12 caractères minimum)"]);
+  });
+});
+
+describe("Connexion sans effet : raison visible", () => {
+  beforeEach(() => {
+    process.env.BOS_ADMIN_PASSWORD = PASSWORD;
+    process.env.BOS_SESSION_SECRET = SECRET;
+  });
+  afterEach(() => {
+    delete process.env.BOS_ADMIN_PASSWORD;
+    delete process.env.BOS_SESSION_SECRET;
+  });
+
+  it("distingue session absente, invalide, expirée et valide", () => {
+    const now = Date.now();
+    const token = createSessionToken(undefined, now);
+    assert.equal(sessionTokenStatus(undefined), "absente");
+    assert.equal(sessionTokenStatus(token, now), "valide");
+    assert.equal(sessionTokenStatus(`${token}x`, now), "invalide");
+    assert.equal(sessionTokenStatus("essai.factice", now), "invalide");
+    assert.equal(sessionTokenStatus(token, now + 13 * 60 * 60 * 1000), "expiree");
+    // Autre secret (autre serveur) : invalide, jamais acceptée.
+    process.env.BOS_SESSION_SECRET = "t".repeat(40);
+    assert.equal(sessionTokenStatus(token, now), "invalide");
+  });
+
+  it("marque la destination après connexion sans perdre ses paramètres", () => {
+    assert.equal(markedLanding("/app"), "/app?connecte=1");
+    assert.equal(markedLanding("/app/clients?id=4"), "/app/clients?id=4&connecte=1");
+    assert.equal(markedLanding("/espace"), "/espace?connecte=1");
   });
 });

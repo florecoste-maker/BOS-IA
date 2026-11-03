@@ -13,6 +13,10 @@ const messages: Record<string, string> = {
   mdp: "Mot de passe de secours incorrect. Oublié ? GitHub → dépôt BOS-IA-Hostinger → Actions → « Installation du cockpit » → Run workflow en cochant « Mot de passe administrateur oublié » : un lien (24 h) permet d'en choisir un nouveau.",
   identifiants: "E-mail ou mot de passe incorrect, ou compte désactivé. Administrateur sans compte nominatif : utilisez le mot de passe de secours.",
   bloque: "Trop de tentatives. Réessayez dans 15 minutes.",
+  cookie:
+    "Mot de passe accepté, mais Safari n'a pas gardé la session. Sur iPhone : Réglages → Apps → Safari → désactivez « Bloquer tous les cookies », quittez la navigation privée, puis reconnectez-vous.",
+  session:
+    "Mot de passe accepté, mais la session n'a pas été reconnue par le serveur. Réessayez une fois ; si le message revient, le diagnostic du serveur l'a enregistré.",
   config:
     "Cockpit pas encore installé : dans GitHub, lancez le workflow « Installation du cockpit » du dépôt BOS-IA-Hostinger, puis ouvrez le lien qu'il affiche.",
   config_vercel:

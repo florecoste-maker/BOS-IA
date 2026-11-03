@@ -8,6 +8,7 @@ import {
   getAuthConfig,
   isLoginBlocked,
   landingPath,
+  markedLanding,
   recordLoginFailure,
   safeNextPath,
   type SessionIdentity,
@@ -16,6 +17,7 @@ import { sendAlert } from "@/lib/alerts";
 import { audit, clientIp } from "@/lib/audit";
 import { getRepository } from "@/lib/data";
 import { redirectTo } from "@/lib/http";
+import { recordLogin } from "@/lib/login-trace";
 import { isSecoursDisabled } from "@/lib/session";
 import { verifyPassword } from "@/lib/users/password";
 
@@ -43,6 +45,7 @@ export async function POST(request: Request) {
   if (!getAuthConfig().configured) return backToLogin("config", next);
   // Limite par adresse IP et par compte visé.
   if (isLoginBlocked(ip) || (email && isLoginBlocked(`compte:${email}`))) {
+    recordLogin("bloquee", email ? "compte" : "secours");
     return backToLogin("bloque", next, email ? "compte" : "secours");
   }
 
@@ -59,6 +62,7 @@ export async function POST(request: Request) {
   if (!identity) {
     recordLoginFailure(ip);
     if (email) recordLoginFailure(`compte:${email}`);
+    recordLogin("refusee", email ? "compte" : "secours");
     await audit(null, "connexion_echouee", email || "compte de secours", { request });
     return email ? backToLogin("identifiants", next, "compte") : backToLogin("mdp", next, "secours");
   }
@@ -77,7 +81,8 @@ export async function POST(request: Request) {
     await audit(actor, "connexion", email, { request });
   }
 
-  const response = redirectTo(landingPath(identity.role, next));
+  recordLogin("acceptee", identity.uid === SECOURS.uid ? "secours" : "compte");
+  const response = redirectTo(markedLanding(landingPath(identity.role, next)));
   response.cookies.set(SESSION_COOKIE, createSessionToken(identity), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
