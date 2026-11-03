@@ -67,7 +67,8 @@ function safeEqual(a: string, b: string) {
 export function checkPassword(candidate: string) {
   const { password, configured } = getAuthConfig();
   if (!configured || !password) return false;
-  return safeEqual(candidate, password);
+  // Le mot de passe enregistré est lu sans espaces autour (getAuthConfig) : même règle pour la saisie.
+  return safeEqual(candidate.trim(), password);
 }
 
 /** Identité portée par la session (signée, non modifiable par le navigateur). */

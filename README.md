@@ -133,7 +133,14 @@ npm run lint
    `BOS_INSTALLATION_DEPOT`). Secours sans GitHub : le code est aussi dans
    `~/bos-ia-installation.txt` tant que l'installation n'est pas faite. On peut
    toujours écrire `bos-ia.env` à la main (`NOM=valeur`, une variable par
-   ligne). `/api/health?diagnostic=1` indique quels fichiers sont chargés et
+   ligne).
+
+   **Priorité des réglages** : variable réellement fournie au processus >
+   `~/bos-ia.env` > copie faite au build (`.next/standalone/.env.production.local`,
+   variables hPanel). Un ancien `BOS_ADMIN_PASSWORD` resté dans hPanel ne
+   remplace donc plus le mot de passe choisi par le lien d'installation ou de
+   réinitialisation. `/api/health?diagnostic=1` → `mot_de_passe_secours.source`
+   indique d'où vient le mot de passe utilisé (jamais sa valeur). `/api/health?diagnostic=1` indique quels fichiers sont chargés et
    quelles variables le processus voit (noms seulement). Sans mot de passe
    administrateur, `/app` et `/api` restent fermés.
 5. Les URLs ont des valeurs Jamaliance par défaut (`https://jamaliance.com`,

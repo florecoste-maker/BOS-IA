@@ -4,7 +4,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { describeEnvFiles, loadedEnvFiles } from "@/lib/env-files";
+import { buildCopiesReplaced, describeEnvFiles, envSource, loadedEnvFiles } from "@/lib/env-files";
 
 /** Noms proches des réglages attendus (casse, espaces, préfixes) pour repérer une faute de frappe. */
 const RELEVANT = /bos|admin_?pass|session_?secret|cron_?secret|^\s*(db|smtp|tidycal|anthropic)_|database_?url/i;
@@ -65,7 +65,14 @@ export function getEnvDiagnostic() {
       lancement: Object.keys(process.env).filter((k) => RUNTIME_HINTS.test(k)).sort(),
     },
     variables,
+    // Mot de passe de secours : provenance et longueur suffisante, jamais la valeur.
+    mot_de_passe_secours: {
+      source: envSource("BOS_ADMIN_PASSWORD"),
+      longueur_suffisante: (process.env.BOS_ADMIN_PASSWORD?.trim().length ?? 0) >= 12,
+      desactive: process.env.BOS_SECOURS_DESACTIVE?.trim() === "1",
+    },
     fichiers_env: {
+      remplacees_par_bos_ia_env: buildCopiesReplaced(),
       bos_ia_env_charges: loadedEnvFiles().map(anonymize),
       bos_ia_env_trouves: describeEnvFiles(anonymize),
       racine: envFiles(root),

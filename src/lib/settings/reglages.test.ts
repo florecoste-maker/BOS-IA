@@ -154,3 +154,43 @@ describe("Accès : un réglage trop court du site ne ferme pas le cockpit", () =
     }
   });
 });
+
+describe("Mot de passe choisi par le lien d'installation : prioritaire sur la copie du build", () => {
+  it("bos-ia.env remplace la valeur reprise au build dans .env.production.local", async () => {
+    const { buildCopiesReplaced, envSource } = await import("../env-files");
+    const home = mkdtempSync(path.join(os.tmpdir(), "bos-copie-build-"));
+    const app = path.join(home, "domains", "app.exemple.com", "hbuilds", "versions", "1", "nodejs");
+    mkdirSync(app, { recursive: true });
+    // Copie faite au build (variables hPanel), chargée par Next au démarrage.
+    writeFileSync(path.join(app, ".env.production.local"), 'BOS_TEST_MDP="ancien-mdp-hpanel"\nBOS_TEST_DOLLAR="a\\$b"\n');
+    writeFileSync(path.join(home, "bos-ia.env"), "BOS_TEST_MDP='nouveau-mdp-choisi'\nBOS_TEST_DOLLAR='nouveau'\nBOS_TEST_VIDE=''\n");
+    process.env.BOS_TEST_MDP = "ancien-mdp-hpanel";
+    process.env.BOS_TEST_DOLLAR = "a$b";
+    try {
+      loadPersistentEnv(app);
+      assert.equal(process.env.BOS_TEST_MDP, "nouveau-mdp-choisi");
+      assert.equal(process.env.BOS_TEST_DOLLAR, "nouveau");
+      assert.ok(buildCopiesReplaced().includes("BOS_TEST_MDP"));
+      assert.equal(envSource("BOS_TEST_MDP", app), "bos-ia.env");
+    } finally {
+      delete process.env.BOS_TEST_MDP;
+      delete process.env.BOS_TEST_DOLLAR;
+      delete process.env.BOS_TEST_VIDE;
+    }
+  });
+
+  it("une valeur vide de bos-ia.env ne remplace jamais la copie du build", () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), "bos-copie-vide-"));
+    const app = path.join(home, "domains", "app.exemple.com", "nodejs");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(path.join(app, ".env.production.local"), 'BOS_TEST_GARDE="valeur-du-build"\n');
+    writeFileSync(path.join(home, "bos-ia.env"), "BOS_TEST_GARDE=''\n");
+    process.env.BOS_TEST_GARDE = "valeur-du-build";
+    try {
+      loadPersistentEnv(app);
+      assert.equal(process.env.BOS_TEST_GARDE, "valeur-du-build");
+    } finally {
+      delete process.env.BOS_TEST_GARDE;
+    }
+  });
+});

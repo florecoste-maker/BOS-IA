@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { brand } from "@/lib/brand";
 import { getAuthConfig, isVercel, safeNextPath } from "@/lib/auth";
+import { isDatabaseConfigured } from "@/lib/db/config";
 
 export const metadata: Metadata = {
   title: `Connexion — ${brand.product}`,
@@ -8,8 +9,8 @@ export const metadata: Metadata = {
 };
 
 const messages: Record<string, string> = {
-  mdp: "Mot de passe de secours incorrect.",
-  identifiants: "E-mail ou mot de passe incorrect, ou compte désactivé.",
+  mdp: "Mot de passe de secours incorrect. Oublié ? GitHub → dépôt BOS-IA-Hostinger → Actions → « Installation du cockpit » → Run workflow en cochant « Mot de passe administrateur oublié » : un lien (24 h) permet d'en choisir un nouveau.",
+  identifiants: "E-mail ou mot de passe incorrect, ou compte désactivé. Administrateur sans compte nominatif : utilisez le mot de passe de secours.",
   bloque: "Trop de tentatives. Réessayez dans 15 minutes.",
   config:
     "Cockpit pas encore installé : dans GitHub, lancez le workflow « Installation du cockpit » du dépôt BOS-IA-Hostinger, puis ouvrez le lien qu'il affiche.",
@@ -28,6 +29,14 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const next = safeNextPath(typeof params.next === "string" ? params.next : null);
   // Noms des réglages en cause (jamais leurs valeurs) : manquant ou trop court.
   const problems = erreur === "config" ? getAuthConfig().problems : [];
+  // Sans base de données il n'existe aucun compte nominatif : mot de passe de secours par défaut.
+  const mode =
+    params.mode === "secours" || params.mode === "compte"
+      ? params.mode
+      : erreur === "mdp" || !isDatabaseConfigured()
+        ? "secours"
+        : "compte";
+  const switchTo = (m: "secours" | "compte") => `/login?${new URLSearchParams({ mode: m, next })}`;
 
   return (
     <main className="mx-auto flex min-h-[100svh] w-full max-w-sm flex-col justify-center px-4 py-16">
@@ -56,37 +65,88 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         </p>
       ) : null}
 
-      <form method="post" action="/api/auth/login" className="mt-6 space-y-4">
-        <input type="hidden" name="next" value={next} />
-        <label className="block text-sm font-medium text-ink">
-          E-mail
+      {mode === "secours" ? (
+        <form method="post" action="/api/auth/login" className="mt-6 space-y-4">
+          <input type="hidden" name="next" value={next} />
+          <input type="hidden" name="mode" value="secours" />
+          {/*
+            Identifiant fixe pour le trousseau iCloud / gestionnaire de mots de passe :
+            le mot de passe de secours est enregistré sous « secours », jamais sous
+            une adresse e-mail (sinon Safari remplit l'e-mail et la connexion échoue).
+          */}
           <input
-            type="email"
-            name="email"
+            type="text"
+            name="username"
+            value="secours"
             autoComplete="username"
-            className="mt-1 block w-full border border-line bg-surface px-3 py-2 text-base text-ink"
+            readOnly
+            hidden
           />
-          <span className="mt-1 block text-xs font-normal text-ink-muted">
-            Laisser vide pour utiliser le mot de passe de secours.
-          </span>
-        </label>
-        <label className="block text-sm font-medium text-ink">
-          Mot de passe
-          <input
-            type="password"
-            name="password"
-            required
-            autoComplete="current-password"
-            className="mt-1 block w-full border border-line bg-surface px-3 py-2 text-base text-ink"
-          />
-        </label>
-        <button
-          type="submit"
-          className="w-full bg-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-deep"
-        >
-          Se connecter
-        </button>
-      </form>
+          <label className="block text-sm font-medium text-ink">
+            Mot de passe de secours
+            <input
+              type="password"
+              name="password"
+              required
+              autoComplete="current-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              className="mt-1 block w-full border border-line bg-surface px-3 py-2 text-base text-ink"
+            />
+            <span className="mt-1 block text-xs font-normal text-ink-muted">
+              Celui choisi avec le lien d&apos;installation (12 caractères minimum).
+            </span>
+          </label>
+          <button
+            type="submit"
+            className="w-full bg-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-deep"
+          >
+            Se connecter
+          </button>
+          <a href={switchTo("compte")} className="block text-sm font-semibold text-brand">
+            Se connecter avec mon e-mail →
+          </a>
+        </form>
+      ) : (
+        <form method="post" action="/api/auth/login" className="mt-6 space-y-4">
+          <input type="hidden" name="next" value={next} />
+          <input type="hidden" name="mode" value="compte" />
+          <label className="block text-sm font-medium text-ink">
+            E-mail
+            <input
+              type="email"
+              name="email"
+              required
+              inputMode="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              className="mt-1 block w-full border border-line bg-surface px-3 py-2 text-base text-ink"
+            />
+          </label>
+          <label className="block text-sm font-medium text-ink">
+            Mot de passe
+            <input
+              type="password"
+              name="password"
+              required
+              autoComplete="current-password"
+              className="mt-1 block w-full border border-line bg-surface px-3 py-2 text-base text-ink"
+            />
+          </label>
+          <button
+            type="submit"
+            className="w-full bg-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-deep"
+          >
+            Se connecter
+          </button>
+          <a href={switchTo("secours")} className="block text-sm font-semibold text-brand">
+            Utiliser le mot de passe de secours (administrateur) →
+          </a>
+        </form>
+      )}
 
       <a
         href={brand.siteUrl}
