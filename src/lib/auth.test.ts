@@ -37,6 +37,9 @@ describe("Accès cockpit BOS-IA", () => {
   it("vérifie le mot de passe", () => {
     assert.equal(checkPassword(PASSWORD), true);
     assert.equal(checkPassword(`${PASSWORD}x`), false);
+    // Espace ajouté par le clavier ou le trousseau : ignoré, comme dans la valeur enregistrée.
+    assert.equal(checkPassword(` ${PASSWORD} `), true);
+    assert.equal(checkPassword(""), false);
   });
 
   it("accepte une session valide et rejette une session falsifiée ou expirée", () => {

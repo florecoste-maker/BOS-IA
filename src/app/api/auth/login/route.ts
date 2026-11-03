@@ -21,18 +21,21 @@ import { verifyPassword } from "@/lib/users/password";
 
 export const dynamic = "force-dynamic";
 
-function backToLogin(erreur: string, next: string) {
-  const query = new URLSearchParams({ erreur, next });
+function backToLogin(erreur: string, next: string, mode?: "secours" | "compte") {
+  const query = new URLSearchParams({ erreur, next, ...(mode ? { mode } : {}) });
   return redirectTo(`/login?${query}`);
 }
 
 /**
- * Connexion par compte nominatif (e-mail + mot de passe). E-mail vide : compte
- * de secours BOS_ADMIN_PASSWORD, journalisé et signalé par alerte.
+ * Connexion par compte nominatif (e-mail + mot de passe). Formulaire « secours »
+ * (ou e-mail vide) : compte de secours BOS_ADMIN_PASSWORD, journalisé et signalé
+ * par alerte. Sur le formulaire de secours, l'e-mail est ignoré : une adresse
+ * remplie d'office par le trousseau de l'iPhone ne fait plus échouer la connexion.
  */
 export async function POST(request: Request) {
   const form = await request.formData();
-  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const secoursDemande = String(form.get("mode") ?? "") === "secours";
+  const email = secoursDemande ? "" : String(form.get("email") ?? "").trim().toLowerCase();
   const password = String(form.get("password") ?? "");
   const next = safeNextPath(String(form.get("next") ?? ""));
   const ip = clientIp(request);
@@ -40,7 +43,7 @@ export async function POST(request: Request) {
   if (!getAuthConfig().configured) return backToLogin("config", next);
   // Limite par adresse IP et par compte visé.
   if (isLoginBlocked(ip) || (email && isLoginBlocked(`compte:${email}`))) {
-    return backToLogin("bloque", next);
+    return backToLogin("bloque", next, email ? "compte" : "secours");
   }
 
   let identity: SessionIdentity | null = null;
@@ -57,7 +60,7 @@ export async function POST(request: Request) {
     recordLoginFailure(ip);
     if (email) recordLoginFailure(`compte:${email}`);
     await audit(null, "connexion_echouee", email || "compte de secours", { request });
-    return backToLogin(email ? "identifiants" : "mdp", next);
+    return email ? backToLogin("identifiants", next, "compte") : backToLogin("mdp", next, "secours");
   }
 
   clearLoginFailures(ip);

@@ -12,6 +12,14 @@
  * fins de ligne Windows, espaces autour du nom, nom proche (`bos_ia.env`,
  * `bos-ia.env.txt`, `.bos-ia.env`). Un fichier placé dans `public_html` est
  * signalé mais jamais chargé (il serait lisible sur le web).
+ *
+ * Priorité : variable réellement fournie au processus > `bos-ia.env` > copie
+ * faite au build dans les `.env*` de l'application. `scripts/prepare-standalone.mjs`
+ * recopie les variables hPanel dans `.next/standalone/.env.production.local`,
+ * que Next charge au démarrage : sans cette règle, un ancien
+ * BOS_ADMIN_PASSWORD de hPanel l'emportait sur le mot de passe choisi par le lien
+ * d'installation (écrit dans `bos-ia.env`) dès le redémarrage suivant, et la
+ * connexion répondait « Mot de passe de secours incorrect ».
  */
 import { randomBytes } from "node:crypto";
 import { linkSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
@@ -43,7 +51,50 @@ const registry = globalThis as typeof globalThis & {
   __bosEnvLastScan?: number;
   /** Valeurs venues de `bos-ia.env` : une modification ultérieure du fichier les remplace. */
   __bosEnvFromFile?: Record<string, string>;
+  /** Noms dont la copie du build a été remplacée par `bos-ia.env` (diagnostic, jamais de valeur). */
+  __bosEnvBuildReplaced?: string[];
 };
+
+export function buildCopiesReplaced() {
+  return registry.__bosEnvBuildReplaced ?? [];
+}
+
+/** D'où vient la valeur utilisée d'une variable (diagnostic : jamais la valeur). */
+export function envSource(key: string, start = process.cwd()) {
+  const current = process.env[key];
+  if (!current?.trim()) return "absent";
+  if (fromFile()[key] === current) return "bos-ia.env";
+  if (isBuildCopy(current, appEnvFileValues(start)[key])) return "copie du build (variables hPanel)";
+  return "processus";
+}
+
+const APP_ENV_FILES = [".env", ".env.production", ".env.local", ".env.production.local"];
+
+/**
+ * Valeurs des fichiers `.env*` de l'application (dossier courant et, pour le
+ * serveur autonome, la racine du projet) : la copie faite au build.
+ */
+export function appEnvFileValues(start = process.cwd()): Record<string, string> {
+  const dir = path.resolve(start);
+  const dirs = path.basename(dir) === "standalone" ? [path.resolve(dir, "../.."), dir] : [dir];
+  const out: Record<string, string> = {};
+  for (const d of dirs) {
+    for (const name of APP_ENV_FILES) {
+      try {
+        Object.assign(out, readEnvFile(path.join(d, name)));
+      } catch {
+        // Fichier absent : rien à reprendre.
+      }
+    }
+  }
+  return out;
+}
+
+/** La valeur du processus est celle d'un `.env*` de l'application (`$` échappé pour @next/env). */
+function isBuildCopy(current: string, copy: string | undefined) {
+  if (copy === undefined) return false;
+  return current === copy || current === copy.replaceAll("\\$", "$") || current.trim() === copy.trim();
+}
 
 function fromFile() {
   return (registry.__bosEnvFromFile ??= {});
@@ -95,6 +146,7 @@ export function loadPersistentEnv(start = process.cwd()) {
   // Plusieurs fichiers : le plus proche de l'application l'emporte, comme avant.
   const vus = new Set<string>();
   const valeursFichier: Record<string, string> = {};
+  const copiesBuild = appEnvFileValues(start);
   for (const { file, isPublic } of findEnvFiles(start)) {
     if (isPublic) continue;
     try {
@@ -107,9 +159,15 @@ export function loadPersistentEnv(start = process.cwd()) {
         if (vus.has(key)) continue;
         vus.add(key);
         valeursFichier[key] = value;
-        if (!current?.trim() || current === fromFile()[key]) {
+        // Une valeur vide du fichier ne remplace jamais la copie du build.
+        const copieBuild = Boolean(current?.trim()) && Boolean(value) && current !== value && isBuildCopy(current!, copiesBuild[key]);
+        if (!current?.trim() || current === fromFile()[key] || copieBuild) {
           process.env[key] = value;
           fromFile()[key] = value;
+          if (copieBuild && !buildCopiesReplaced().includes(key)) {
+            registry.__bosEnvBuildReplaced = [...buildCopiesReplaced(), key];
+            console.warn(`${key} : valeur de bos-ia.env utilisée (copie du build plus ancienne ignorée).`);
+          }
         }
       }
       if (!loadedEnvFiles().includes(file)) registry.__bosEnvFiles = [...loadedEnvFiles(), file];
