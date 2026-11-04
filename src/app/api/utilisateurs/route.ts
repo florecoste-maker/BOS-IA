@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isDatabaseConfigured } from "@/lib/db/config";
 import { audit } from "@/lib/audit";
 import { getRepository } from "@/lib/data";
 import { isEmail } from "@/lib/mail";
@@ -23,6 +24,13 @@ export async function GET() {
 export async function POST(request: Request) {
   const actor = await requireAdmin();
   if (!actor) return forbidden();
+  // Sans base MySQL, un compte créé serait effacé au prochain redémarrage.
+  if (!isDatabaseConfigured()) {
+    return NextResponse.json(
+      { error: "Reliez d'abord la base MySQL (Connexions → Réglages du serveur) : sans elle, le compte serait effacé au redémarrage." },
+      { status: 409 },
+    );
+  }
   const body = (await request.json().catch(() => ({}))) as {
     email?: string;
     nom?: string;

@@ -5,8 +5,12 @@ import {
   checkPassword,
   createSessionToken,
   getAuthConfig,
+  KEYCHAIN_USERNAME,
   isLoginBlocked,
+  isOwnerIdentifier,
   markedLanding,
+  ownerEmail,
+  ownerIdentity,
   recordLoginFailure,
   sessionTokenStatus,
   safeNextPath,
@@ -129,11 +133,32 @@ describe("Connexion sans effet : raison visible", () => {
   });
 });
 
-describe("Trousseau iPhone : même identifiant à l'installation et à la connexion", () => {
-  it("les deux formulaires enregistrent et cherchent le mot de passe sous KEYCHAIN_USERNAME", () => {
-    for (const page of ["src/app/installation/page.tsx", "src/app/login/page.tsx"]) {
-      const source = readFileSync(page, "utf8");
-      assert.match(source, /name="username"\s+value=\{KEYCHAIN_USERNAME\}/, page);
+describe("Administratrice principale : son e-mail et le mot de passe administrateur", () => {
+  afterEach(() => {
+    delete process.env.BOS_ADMIN_EMAIL;
+  });
+
+  it("reconnaît l'adresse de l'agence, l'identifiant du trousseau et le champ vide", () => {
+    assert.equal(ownerEmail(), "contact@jamaliance.com");
+    for (const id of ["contact@jamaliance.com", " Contact@Jamaliance.com ", "administrateur", ""]) {
+      assert.equal(isOwnerIdentifier(id), true, id);
     }
+    assert.equal(isOwnerIdentifier("camille@jamaliance.com"), false);
+    assert.equal(ownerIdentity().nom, "contact@jamaliance.com");
+    assert.equal(ownerIdentity().role, "admin");
+  });
+
+  it("adresse changeable par BOS_ADMIN_EMAIL", () => {
+    process.env.BOS_ADMIN_EMAIL = "Direction@Exemple.fr";
+    assert.equal(isOwnerIdentifier("direction@exemple.fr"), true);
+    assert.equal(isOwnerIdentifier("contact@jamaliance.com"), false);
+  });
+
+  it("la page d'installation enregistre le mot de passe sous l'identifiant reconnu à la connexion", () => {
+    const source = readFileSync("src/app/installation/page.tsx", "utf8");
+    assert.match(source, /name="username"\s+value=\{KEYCHAIN_USERNAME\}/);
+    assert.equal(isOwnerIdentifier(KEYCHAIN_USERNAME), true);
+    // Champ texte : « administrateur » n'est pas bloqué par la validation e-mail du navigateur.
+    assert.match(readFileSync("src/app/login/page.tsx", "utf8"), /type="text"\s+name="email"/);
   });
 });

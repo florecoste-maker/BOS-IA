@@ -17,12 +17,6 @@ export default async function AppShellLayout({
   return (
     <div className="min-h-screen">
       <AppNav user={actor ? { nom: actor.nom, admin: actor.role === "admin" } : null} />
-      {actor?.secours ? (
-        <p className="border-b border-danger/30 bg-danger/10 px-4 py-2 text-center text-sm text-ink">
-          Connecté avec le mot de passe de secours : vos actions ne sont pas nominatives.
-          Créez votre compte dans « Comptes », puis reconnectez-vous avec votre e-mail.
-        </p>
-      ) : null}
       {demo ? (
         <p className="border-b border-warn/30 bg-warn/10 px-4 py-2 text-center text-sm text-ink">
           Mode démonstration : données fictives en mémoire, réinitialisées à chaque

@@ -11,11 +11,14 @@ export function UsersClient({
   initialUsers,
   selfId,
   clients,
+  creationPossible = true,
 }: {
   initialUsers: User[];
   selfId: string;
   /** Entreprises clientes auxquelles rattacher un compte client. */
   clients: Array<{ id: string; nom: string }>;
+  /** Faux sans base MySQL : un compte créé serait effacé au redémarrage. */
+  creationPossible?: boolean;
 }) {
   const [users, setUsers] = useState(initialUsers);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -138,6 +141,7 @@ export function UsersClient({
         )}
       </ul>
 
+      {creationPossible ? (
       <form onSubmit={create} className="mt-10 grid max-w-2xl gap-4 text-sm md:grid-cols-2">
         <h2 className="font-display text-xl font-semibold md:col-span-2">Nouveau compte</h2>
         <label>
@@ -196,6 +200,7 @@ export function UsersClient({
           </button>
         </div>
       </form>
+      ) : null}
     </>
   );
 }

@@ -3,6 +3,7 @@
  * signée (HMAC-SHA256) dans un cookie httpOnly. Aucun secret côté client.
  */
 import { createHash, createHmac, scryptSync, timingSafeEqual } from "node:crypto";
+import { brand } from "@/lib/brand";
 
 export const SESSION_COOKIE = "bos_session";
 export const SESSION_TTL_SECONDS = 12 * 60 * 60;
@@ -87,6 +88,27 @@ export interface SessionIdentity {
  * pour retrouver les mots de passe déjà enregistrés.
  */
 export const KEYCHAIN_USERNAME = "administrateur";
+
+/**
+ * Adresse de l'administratrice principale (BOS_ADMIN_EMAIL, par défaut l'adresse
+ * de l'agence). Elle se connecte avec cette adresse et le mot de passe
+ * administrateur (BOS_ADMIN_PASSWORD, rangé dans ~/bos-ia.env) : aucun compte à
+ * créer, rien en mémoire, donc rien ne disparaît au redémarrage, avec ou sans MySQL.
+ */
+export function ownerEmail() {
+  return (process.env.BOS_ADMIN_EMAIL?.trim() || brand.email).toLowerCase();
+}
+
+/** Identifiant qui désigne l'administratrice principale : son e-mail, « administrateur » (trousseau) ou vide. */
+export function isOwnerIdentifier(identifiant: string) {
+  const id = identifiant.trim().toLowerCase();
+  return id === "" || id === KEYCHAIN_USERNAME || id === ownerEmail();
+}
+
+/** Identité de session de l'administratrice principale (mot de passe administrateur). */
+export function ownerIdentity(): SessionIdentity {
+  return { uid: "secours", role: "admin", nom: ownerEmail() };
+}
 
 export const SECOURS: SessionIdentity = { uid: "secours", role: "admin", nom: "Compte de secours" };
 

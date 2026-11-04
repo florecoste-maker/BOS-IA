@@ -17,8 +17,10 @@ export default async function AccountPage() {
       />
       {actor.secours ? (
         <p className="max-w-2xl text-sm text-ink-muted">
-          Vous êtes connecté avec le mot de passe de secours, qui se change dans hPanel
-          (BOS_ADMIN_PASSWORD). Créez plutôt votre compte nominatif dans « Comptes ».
+          Compte de l&apos;administratrice principale : connexion avec cette adresse et le mot de
+          passe administrateur, enregistré sur le serveur (il ne disparaît pas au redémarrage).
+          Pour le changer : GitHub → BOS-IA-Hostinger → Actions → « Installation du cockpit » →
+          « Mot de passe administrateur oublié ».
         </p>
       ) : (
         <AccountClient />

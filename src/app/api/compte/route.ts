@@ -12,7 +12,7 @@ export async function PATCH(request: Request) {
   if (!actor) return NextResponse.json({ error: "Authentification requise" }, { status: 401 });
   if (actor.secours) {
     return NextResponse.json(
-      { error: "Le compte de secours se change dans hPanel (BOS_ADMIN_PASSWORD)" },
+      { error: "Le mot de passe administrateur se change par le workflow « Installation du cockpit » (Mot de passe administrateur oublié)" },
       { status: 400 },
     );
   }

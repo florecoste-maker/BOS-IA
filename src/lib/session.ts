@@ -24,7 +24,7 @@ export function isSecoursDisabled() {
 export async function resolveActor(identity: SessionIdentity | null): Promise<Actor | null> {
   if (!identity) return null;
   if (identity.uid === SECOURS.uid) {
-    return isSecoursDisabled() ? null : { id: SECOURS.uid, nom: SECOURS.nom, role: "admin", secours: true };
+    return isSecoursDisabled() ? null : { id: SECOURS.uid, nom: identity.nom || SECOURS.nom, role: "admin", secours: true };
   }
   const user = await (await getRepository()).findUserById(identity.uid);
   if (!user || !user.actif) return null;
