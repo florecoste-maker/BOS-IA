@@ -9,7 +9,8 @@ export const metadata: Metadata = {
 
 const messages: Record<string, string> = {
   mdp: "Mot de passe administrateur incorrect. Oublié ? GitHub → dépôt BOS-IA-Hostinger → Actions → « Installation du cockpit » → Run workflow en cochant « Mot de passe administrateur oublié » : un lien (24 h) permet d'en choisir un nouveau.",
-  identifiants: "E-mail ou mot de passe incorrect, ou compte désactivé.",
+  identifiants:
+    "E-mail ou mot de passe incorrect, ou compte désactivé. Administration : utilisez le mot de passe administrateur (celui du lien d'installation, proposé par Safari sous « administrateur »).",
   bloque: "Trop de tentatives. Réessayez dans 15 minutes.",
   cookie:
     "Mot de passe accepté, mais Safari n'a pas gardé la session. Sur iPhone : Réglages → Apps → Safari → désactivez « Bloquer tous les cookies », quittez la navigation privée, puis reconnectez-vous.",

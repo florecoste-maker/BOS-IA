@@ -69,7 +69,9 @@ export async function POST(request: Request) {
       identity = { uid: found.user.id, role: found.user.role, nom: found.user.nom };
     }
   }
-  if (!identity && proprietaire && !isSecoursDisabled() && checkPassword(password)) identity = ownerIdentity();
+  // Mot de passe administrateur : accepté quelle que soit l'adresse saisie (le trousseau de
+  // l'iPhone remplit parfois une autre adresse). Le mot de passe reste la seule clé d'entrée.
+  if (!identity && !isSecoursDisabled() && checkPassword(password)) identity = ownerIdentity();
 
   if (!identity) {
     recordLoginFailure(ip);
