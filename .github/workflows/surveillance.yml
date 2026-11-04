@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       tache:
-        description: "sante ou sauvegarde"
+        description: "sante, sauvegarde ou test_ia (vraie analyse IA, consomme un peu de crédit Anthropic)"
         default: sante
       url:
         description: "Adresse à vérifier (défaut : BOS_APP_URL)"
@@ -64,6 +64,18 @@ jobs:
           if [ -z "$BOS_CRON_SECRET" ]; then
             echo "::warning::Secret BOS_CRON_SECRET absent (Settings → Secrets and variables → Actions → Repository secrets) : bilan complet et sauvegarde non effectués."
             exit 0
+          fi
+          if [ "$TACHE" = "test_ia" ]; then
+            status=$(curl -sS -o reponse.json -w "%{http_code}" --max-time 90 \
+              -H "Authorization: Bearer $BOS_CRON_SECRET" "$BOS_APP_URL/api/health?complet=1&test_ia=1")
+            cat reponse.json; echo
+            [ "$status" = "401" ] && { echo "::error::Secret refusé : BOS_CRON_SECRET n'a pas la même valeur dans GitHub et sur le serveur"; exit 1; }
+            if jq -e '.test_ia.ok == true' reponse.json >/dev/null 2>&1; then
+              echo "::notice::Analyse IA réelle réussie : $(jq -r '.test_ia | "\(.agent), \(.modele), \(.actions) action(s), \(.duree_s) s"' reponse.json)"
+              exit 0
+            fi
+            echo "::error::Analyse IA : $(jq -r '.test_ia.message // "réponse inattendue (HTTP '"$status"')"' reponse.json 2>/dev/null)"
+            exit 1
           fi
           if [ "$TACHE" = "sauvegarde" ]; then
             status=$(curl -sS -o reponse.json -w "%{http_code}" -X POST --max-time 120 \

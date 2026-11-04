@@ -4,6 +4,8 @@ import { getAuthConfig } from "@/lib/auth";
 import { getEnvDiagnostic } from "@/lib/env-diagnostic";
 import { retryPersistentEnv } from "@/lib/env-files";
 import { runHealthChecks } from "@/lib/health";
+import { AgentRunError, runAgent } from "@/lib/agents/claude";
+import { getRepository } from "@/lib/data";
 import { loginTrace } from "@/lib/login-trace";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +32,40 @@ export async function GET(request: Request) {
   if (!isCronAuthorized(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "Secret invalide" }, { status: 401 });
   }
+  // Test réel d'une analyse IA (crédit, modèle, réponse structurée) : `&test_ia=1`, sur demande seulement
+  // (une analyse consomme du crédit Anthropic). Résultat inclus dans le bilan, sans donnée client.
+  if (params.get("test_ia") === "1") {
+    return NextResponse.json({ service: "bos-ia", test_ia: await testAnalyseIa() }, { headers: { "Cache-Control": "no-store" } });
+  }
   const health = await runHealthChecks();
   // `connexions` : dernière tentative et dernier retour sur le cockpit (ce processus), sans secret.
   return NextResponse.json({ service: "bos-ia", ...health, connexions: loginTrace() }, { status: health.ok ? 200 : 503 });
+}
+
+/** Lance une vraie analyse du premier agent (55 s au plus pour répondre ; elle continue au-delà). */
+async function testAnalyseIa() {
+  const agent = (await (await getRepository()).getAgents())[0];
+  if (!agent) return { ok: false, message: "Aucun agent enregistré" };
+  const debut = Date.now();
+  const analyse = runAgent(agent.id)
+    .then((run) => ({
+      ok: true,
+      agent: agent.nom,
+      modele: run?.model ?? null,
+      actions: run?.actions.length ?? 0,
+      resume: run?.resume ?? "",
+    }))
+    .catch((error: unknown) => ({
+      ok: false,
+      agent: agent.nom,
+      message: error instanceof AgentRunError ? error.message : "Erreur interne",
+    }));
+  const delai = new Promise<{ ok: null; agent: string; message: string }>((resolve) =>
+    setTimeout(
+      () => resolve({ ok: null, agent: agent.nom, message: "Analyse toujours en cours après 55 s : résultat dans « Analyses IA récentes » au prochain bilan" }),
+      55_000,
+    ),
+  );
+  const resultat = await Promise.race([analyse, delai]);
+  return { ...resultat, duree_s: Math.round((Date.now() - debut) / 1000) };
 }
