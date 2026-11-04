@@ -8,7 +8,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { brand } from "@/lib/brand";
 import { getRepository, type Repository } from "@/lib/data";
 import { OPERATIONS, isAllowedValue, isOperationType } from "@/lib/actions/operations";
-import type { Agent, AgentRunLog, EmailDraft, StatusOperation } from "@/lib/types";
+import { getTidyCalServerConfig } from "@/lib/integrations/config";
+import { listTidyCalBookings } from "@/lib/integrations/tidycal";
+import type { Agent, AgentRunLog, Client, Contact, EmailDraft, StatusOperation } from "@/lib/types";
 
 export const DEFAULT_AGENTS_MODEL = "claude-opus-5-5";
 const MAX_ACTIONS = 3;
@@ -215,17 +217,70 @@ const proposalSchema = {
   additionalProperties: false,
 } as const;
 
+/**
+ * Rendez-vous TidyCal des 30 derniers et 30 prochains jours (si TIDYCAL_API_TOKEN est configuré) :
+ * dates, statut et entreprise cliente reconnue d'après l'adresse e-mail ; ni nom ni coordonnées.
+ */
+async function rendezVousTidyCal(clients: Client[], contacts: Contact[]) {
+  if (!getTidyCalServerConfig().hasApiAccess) return { disponible: false, raison: "TidyCal non connecté (TIDYCAL_API_TOKEN)" };
+  const jour = 86_400_000;
+  const result = await listTidyCalBookings({
+    startsAt: new Date(Date.now() - 30 * jour).toISOString(),
+    endsAt: new Date(Date.now() + 30 * jour).toISOString(),
+  }).catch(() => null);
+  if (!result?.ok) return { disponible: false, raison: "TidyCal injoignable" };
+  const parEmail = new Map<string, string>();
+  for (const c of clients) if (c.email) parEmail.set(c.email.toLowerCase(), c.id);
+  for (const c of contacts) if (c.email) parEmail.set(c.email.toLowerCase(), c.clientId);
+  return {
+    disponible: true,
+    liste: result.data.data.map((b) => ({
+      debut: b.starts_at,
+      fin: b.ends_at,
+      annule: Boolean(b.cancelled_at),
+      clientId: b.contact?.email ? (parEmail.get(b.contact.email.toLowerCase()) ?? null) : null,
+    })),
+  };
+}
+
 /** Données du cockpit transmises à l'agent, sans adresses ni téléphones (minimisation RGPD). */
 export async function buildAgentContext(repo: Repository) {
-  const [clients, missions, factures, paiements, indicateurs] = await Promise.all([
+  const [clients, missions, factures, paiements, indicateurs, devis, contacts] = await Promise.all([
     repo.getClients(),
     repo.getMissions(),
     repo.getInvoices(),
     repo.getPayments(),
     repo.getMetrics(),
+    repo.getQuotes(),
+    repo.getContacts(),
   ]);
   return {
     aujourdhui: new Date().toISOString().slice(0, 10),
+    // Devis : montants, statut et dates ; ni lignes détaillées ni nom de la personne qui a répondu.
+    devis: devis.map((q) => ({
+      id: q.id,
+      numero: q.numero,
+      clientId: q.clientId,
+      client: q.client,
+      missionId: q.missionId,
+      objet: q.objet,
+      montantHT: q.montantHT,
+      montantTTC: q.montantTTC,
+      status: q.status,
+      emisLe: q.emisLe,
+      valableJusquau: q.valableJusquau,
+      factureId: q.factureId,
+      reponduLe: q.reponduLe,
+    })),
+    // Contacts : rôle seulement (fonction, catégorie, interlocuteur principal) ; ni nom ni coordonnées.
+    contacts: contacts.map((c) => ({
+      clientId: c.clientId,
+      fonction: c.fonction,
+      categorie: c.categorie,
+      principal: c.principal,
+      emailConnu: Boolean(c.email),
+    })),
+    rendezVous: await rendezVousTidyCal(clients, contacts),
     // Coordonnées masquées : seul compte le fait qu'un e-mail soit possible.
     clients: clients.map((client) => {
       const copy: Partial<typeof client> & { emailConnu: boolean } = {
@@ -258,7 +313,7 @@ function systemPrompt(agent: Agent) {
   return [
     `Tu es « ${agent.nom} », agent du moteur ${brand.product} de l'agence ${brand.agency}, qui conçoit et déploie des agents IA et des automatisations pour les entreprises.`,
     `Ton rôle : ${agent.role}. Niveau d'autonomie : ${agent.autonomy} (tier ${agent.tier}).`,
-    "Tu analyses les données du cockpit fournies (clients, missions, factures, paiements, indicateurs) et tu proposes des actions ; tu n'exécutes rien toi-même.",
+    "Tu analyses les données du cockpit fournies (clients, contacts, devis, missions, factures, paiements, rendez-vous, indicateurs) et tu proposes des actions ; tu n'exécutes rien toi-même. Reste dans ton rôle : ne traite que ce qui le concerne.",
     "Appuie-toi uniquement sur les données fournies : si une information manque, dis-le dans le résumé plutôt que de la supposer. S'il n'y a encore aucune donnée, dis-le simplement et ne propose rien.",
     "Pour écrire à un client ou au client d'une facture, joins un brouillon d'e-mail complet (champ email) : il sera relu et envoyé par un humain. Seulement si emailConnu (client) ou emailClientConnu (facture) vaut true. Ton professionnel et courtois, vouvoiement.",
     "Si l'action consiste à mettre à jour un statut (client sans activité depuis longtemps, mission livrée, facture échue à passer en relance…), renseigne le champ operation. Une action peut combiner un e-mail et un changement de statut (ex. relance envoyée et facture passée en « relance »). Ne propose jamais un statut déjà en place. Les paiements, signatures et annulations restent des gestes humains : ne les propose pas comme opération.",

@@ -49,13 +49,23 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
     await state?.pool.end();
   });
 
-  it("crée le schéma et les 6 agents, sans données métier fictives", async () => {
+  it("crée le schéma et les 9 agents, sans données métier fictives", async () => {
     const agents = await repo.getAgents();
-    assert.equal(agents.length, 6);
+    assert.equal(agents.length, 9);
     assert.ok(agents.every((a) => a.status === "actif"));
     assert.deepEqual(
       agents.map((a) => a.nom),
-      ["Suivi commercial", "Suivi des missions", "Recouvrement assisté", "Pilotage financier", "Conformité RGPD", "Assistant e-mails"],
+      [
+        "Suivi commercial",
+        "Suivi des missions",
+        "Recouvrement assisté",
+        "Pilotage financier",
+        "Conformité RGPD",
+        "Assistant e-mails",
+        "Service client",
+        "Rendez-vous",
+        "Administratif",
+      ],
     );
     assert.equal((await repo.getClients()).length, 0);
     assert.equal((await repo.getMissions()).length, 0);
@@ -65,7 +75,17 @@ describe("Moteur MySQL", { skip: !url && "BOS_TEST_DATABASE_URL non défini" }, 
     assert.equal(metrics.mrr, null);
     assert.equal(metrics.delaiPaiementMoyen, null);
     assert.equal(metrics.aEncaisser, 0);
-    assert.equal(metrics.agentsActifs, 6);
+    assert.equal(metrics.agentsActifs, 9);
+  });
+
+  it("ajoute à une base existante les agents du catalogue qui y manquent, sans toucher aux autres", async () => {
+    await conn.query("UPDATE bos_agents SET derniere_action = 'historique conservé' WHERE id = 'agt-001'");
+    await conn.query("DELETE FROM bos_agents WHERE id IN ('agt-007', 'agt-008', 'agt-009')");
+    await reconnect();
+    const agents = await repo.getAgents();
+    assert.equal(agents.length, 9);
+    assert.equal(agents.find((a) => a.id === "agt-001")?.derniereAction, "historique conservé");
+    assert.equal(agents.find((a) => a.id === "agt-008")?.nom, "Rendez-vous");
   });
 
   it("enregistre une analyse d'agent et la file HITL de façon persistante", async () => {

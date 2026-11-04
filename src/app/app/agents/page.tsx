@@ -26,7 +26,7 @@ export default async function AgentsPage() {
       <SectionTitle
         eyebrow="Agents IA"
         title="Agents de l'agence"
-        description="Six agents analysent vos clients, missions, factures et paiements et proposent des actions (e-mails, relances, changements de statut). Rien ne part sans votre validation pour les actions sensibles (HITL)."
+        description={`${agents.length} agents analysent vos clients, contacts, devis, missions, factures, paiements et rendez-vous, et proposent des actions (e-mails, relances, changements de statut). Rien ne part sans votre validation pour les actions sensibles (HITL).`}
       />
       {runs[0]?.statut === "echec" ? (
         <p className="mb-6 border-l-2 border-danger bg-surface px-3 py-2 text-sm">

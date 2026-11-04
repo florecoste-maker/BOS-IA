@@ -19,7 +19,8 @@ function pending(agentId: string): AgentAction {
 describe("Planification des agents", () => {
   it("lance tous les agents la première fois", () => {
     const plan = planScheduledRun({ agents, actions: [], runs: [], agentIds: [], intervalHours: 20, now: NOW });
-    assert.equal(plan.length, 6);
+    assert.equal(plan.length, agents.length);
+    assert.equal(agents.length, 9);
     assert.ok(plan.every((p) => p.decision === "lancer" && p.raison === "première analyse"));
   });
 

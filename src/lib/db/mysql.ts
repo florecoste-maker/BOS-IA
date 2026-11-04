@@ -1,6 +1,6 @@
 /**
  * Moteur MySQL / MariaDB du cockpit BOS-IA.
- * Les tables (préfixe `bos_`) sont créées au premier accès ; seuls les 6 agents
+ * Les tables (préfixe `bos_`) sont créées au premier accès ; seuls les agents
  * sont insérés : aucune donnée métier fictive. Clients, missions, factures et
  * paiements sont saisis dans le cockpit (ou importés).
  */
@@ -242,24 +242,15 @@ function configKey(c: DatabaseConfig) {
 async function prepare(pool: Pool) {
   for (const statement of SCHEMA) await pool.query(statement);
   await migrate(pool);
-  const [rows] = await pool.query<RowDataPacket[]>("SELECT COUNT(*) AS n FROM bos_agents");
-  if (Number(rows[0].n) === 0) {
-    for (const agent of store.getAgents()) {
-      await pool.execute(
-        `INSERT IGNORE INTO bos_agents
-           (id, nom, role, tier, autonomy, status, derniere_action, risque, hitl_obligatoire)
-         VALUES (?, ?, ?, ?, ?, 'actif', 'Aucune analyse pour l''instant', ?, ?)`,
-        [
-          agent.id,
-          agent.nom,
-          agent.role,
-          agent.tier,
-          agent.autonomy,
-          agent.risque,
-          agent.hitlObligatoire ? 1 : 0,
-        ],
-      );
-    }
+  // Agents du catalogue absents de la base (première installation ou agents ajoutés depuis) :
+  // INSERT IGNORE ne touche jamais aux agents existants ni à leur historique.
+  for (const agent of store.getAgents()) {
+    await pool.execute(
+      `INSERT IGNORE INTO bos_agents
+         (id, nom, role, tier, autonomy, status, derniere_action, risque, hitl_obligatoire)
+       VALUES (?, ?, ?, ?, ?, 'actif', 'Aucune analyse pour l''instant', ?, ?)`,
+      [agent.id, agent.nom, agent.role, agent.tier, agent.autonomy, agent.risque, agent.hitlObligatoire ? 1 : 0],
+    );
   }
 }
 
