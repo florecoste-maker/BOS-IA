@@ -126,3 +126,13 @@ describe("Erreurs de l'API Claude expliquées", () => {
     assert.equal(describeClaudeError(new Error("x")), null);
   });
 });
+
+describe("Repère de la clé API (jamais la clé)", () => {
+  it("garde le préfixe de format et les 4 derniers caractères", async () => {
+    const { keyHint } = await import("./claude");
+    assert.equal(keyHint("sk-ant-api03-abcdefghijklmnopqrstuvwxyz-WXYZ"), "sk-ant-api03-…WXYZ");
+    assert.equal(keyHint("cle-sans-format-connu-1234"), "…1234");
+    assert.equal(keyHint("court"), null);
+    assert.equal(keyHint(null), null);
+  });
+});

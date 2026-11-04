@@ -43,7 +43,14 @@ export async function runHealthChecks(now = Date.now()): Promise<{ ok: boolean; 
     !claude
       ? { nom: "Agents IA", statut: "attention", message: "ANTHROPIC_API_KEY absente" }
       : claude.ok
-        ? { nom: "Agents IA", statut: "ok", message: `Clé API Claude valide (${claude.model})` }
+        ? {
+            nom: "Agents IA",
+            statut: "ok",
+            message:
+              `Clé API Claude valide (${claude.model})` +
+              ` ; organisation ${claude.organisation ?? "inconnue"}, clé ${claude.cle ?? "inconnue"}` +
+              " (le solde ne se lit que dans la console)",
+          }
         : { nom: "Agents IA", statut: "erreur", message: claude.message },
   );
 

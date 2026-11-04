@@ -19,6 +19,21 @@ export function getAgentsConfig() {
   return { apiKey, model, configured: Boolean(apiKey) };
 }
 
+/**
+ * Repère de la clé utilisée, comparable à la console Anthropic (Settings → API Keys
+ * affiche le début et la fin de chaque clé) : jamais la clé elle-même.
+ */
+export function keyHint(apiKey: string | null) {
+  if (!apiKey || apiKey.length < 12) return null;
+  const prefix = apiKey.match(/^sk-ant-[a-z]+\d*-/)?.[0] ?? "";
+  return `${prefix}…${apiKey.slice(-4)}`;
+}
+
+/** Organisation Anthropic de la clé, renvoyée par l'API dans chaque réponse (identifiant non secret). */
+function organisationOf(headers: unknown) {
+  return headers instanceof Headers ? headers.get("anthropic-organization-id") : null;
+}
+
 /** Message clair pour une erreur de l'API Claude (jamais la clé). */
 export function describeClaudeError(error: unknown): { message: string; status: number } | null {
   if (error instanceof Anthropic.AuthenticationError) {
@@ -29,8 +44,13 @@ export function describeClaudeError(error: unknown): { message: string; status: 
   }
   // Pas de classe dédiée : un solde insuffisant est un 400 dont le message cite le crédit.
   if (error instanceof Anthropic.BadRequestError && /credit balance/i.test(error.message)) {
+    const org = organisationOf(error.headers);
+    const cle = keyHint(getAgentsConfig().apiKey);
     return {
-      message: "Crédit Anthropic épuisé : rechargez sur console.anthropic.com (Billing). Aucune analyse n'a été facturée.",
+      message:
+        "Crédit Anthropic épuisé pour la clé utilisée : rechargez sur console.anthropic.com (Billing) l'organisation de cette clé." +
+        (org || cle ? ` Organisation ${org ?? "inconnue"}, clé ${cle ?? "inconnue"}.` : "") +
+        " Aucune analyse n'a été facturée.",
       status: 402,
     };
   }
@@ -43,7 +63,9 @@ export function describeClaudeError(error: unknown): { message: string; status: 
   return null;
 }
 
-export type ClaudeProbe = { ok: true; model: string } | { ok: false; message: string };
+export type ClaudeProbe =
+  | { ok: true; model: string; organisation: string | null; cle: string | null }
+  | { ok: false; message: string };
 
 /**
  * Vérification gratuite de la clé : lecture de la fiche du modèle (aucun
@@ -54,8 +76,13 @@ export async function probeClaude(): Promise<ClaudeProbe | null> {
   if (!configured) return null;
   try {
     const client = new Anthropic({ apiKey: apiKey ?? undefined, timeout: 10_000, maxRetries: 0 });
-    const info = await client.models.retrieve(model);
-    return { ok: true, model: info.display_name || info.id };
+    const { data: info, response } = await client.models.retrieve(model).withResponse();
+    return {
+      ok: true,
+      model: info.display_name || info.id,
+      organisation: response.headers.get("anthropic-organization-id"),
+      cle: keyHint(apiKey),
+    };
   } catch (error) {
     if (error instanceof Anthropic.NotFoundError) {
       return { ok: false, message: `Modèle « ${model} » inconnu de l'API : vérifiez BOS_AGENTS_MODEL` };
