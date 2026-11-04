@@ -28,6 +28,12 @@ export default async function AgentsPage() {
         title="Agents de l'agence"
         description="Six agents analysent vos clients, missions, factures et paiements et proposent des actions (e-mails, relances, changements de statut). Rien ne part sans votre validation pour les actions sensibles (HITL)."
       />
+      {runs[0]?.statut === "echec" ? (
+        <p className="mb-6 border-l-2 border-danger bg-surface px-3 py-2 text-sm">
+          Dernière analyse IA en échec ({names.get(runs[0].agentId) ?? runs[0].agentId},{" "}
+          {formatDateTime(runs[0].debut)}) : {runs[0].message}
+        </p>
+      ) : null}
       <AgentsClient initialAgents={agents} initialActions={await withRecipients(repo, actions)} />
 
       <section className="mt-12">

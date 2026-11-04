@@ -87,28 +87,74 @@ export function AgentsClient({
   }
 
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  // Résultat affiché sous le bouton de l'agent : visible sur iPhone sans remonter la page.
+  const [results, setResults] = useState<Record<string, { ok: boolean; text: string }>>({});
+
+  /** Réponse JSON du serveur, ou message clair si le relais a renvoyé autre chose (page d'erreur). */
+  async function readJson(res: Response) {
+    try {
+      return (await res.json()) as Record<string, unknown>;
+    } catch {
+      return { error: `Le serveur a répondu de façon inattendue (HTTP ${res.status}). Réessayez dans un instant.` };
+    }
+  }
 
   async function runAgent(agentId: string) {
     setRunningId(agentId);
-    setMessage(null);
+    setElapsed(0);
+    setResults((r) => {
+      const next = { ...r };
+      delete next[agentId];
+      return next;
+    });
+    const show = (ok: boolean, text: string) => setResults((r) => ({ ...r, [agentId]: { ok, text } }));
+    const POLL_MS = 2500;
+    const MAX_POLLS = (6 * 60 * 1000) / POLL_MS; // 6 minutes au plus
     try {
       const res = await fetch("/api/agents/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agentId }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setMessage(data.error ?? "Erreur");
+      const start = await readJson(res);
+      if (!res.ok || typeof start.jobId !== "string") {
+        show(false, String(start.error ?? `Erreur HTTP ${res.status}`));
         return;
       }
-      setAgents(data.agents);
-      setActions(data.actions);
-      setMessage(
-        `Analyse terminée (${data.run.model}) — ${data.run.actions.length} action(s) proposée(s).`,
-      );
+      // L'analyse tourne sur le serveur : on vient chercher le résultat.
+      for (let poll_n = 1; poll_n <= MAX_POLLS; poll_n++) {
+        await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+        setElapsed(Math.round((poll_n * POLL_MS) / 1000));
+        let poll: Response;
+        try {
+          poll = await fetch(`/api/agents/run?id=${encodeURIComponent(start.jobId)}`, { cache: "no-store" });
+        } catch {
+          continue; // coupure réseau passagère : on réessaie
+        }
+        const data = await readJson(poll);
+        if (!poll.ok) {
+          show(false, String(data.error ?? `Erreur HTTP ${poll.status}`));
+          return;
+        }
+        if (data.statut === "en_cours") continue;
+        if (data.statut === "echec") {
+          show(false, String(data.error ?? "Analyse en échec"));
+          return;
+        }
+        const run = data.run as { model?: string; resume?: string; actions?: unknown[] } | null;
+        setAgents(data.agents as Agent[]);
+        setActions(data.actions as AgentAction[]);
+        show(
+          true,
+          `Analyse terminée${run?.model ? ` (${run.model})` : ""} : ${run?.actions?.length ?? 0} action(s) proposée(s).` +
+            (run?.resume ? ` ${run.resume}` : ""),
+        );
+        return;
+      }
+      show(false, "L'analyse dure plus de 6 minutes : consultez « Exécutions » plus bas dans un moment.");
     } catch {
-      setMessage("Connexion au serveur impossible.");
+      show(false, "Connexion au serveur impossible. Vérifiez la connexion internet et réessayez.");
     } finally {
       setRunningId(null);
     }
@@ -317,8 +363,21 @@ export function AgentsClient({
                 onClick={() => runAgent(agent.id)}
                 className="mt-4 border border-line px-3 py-1.5 text-xs font-semibold hover:border-brand/40 disabled:opacity-50"
               >
-                {runningId === agent.id ? "Analyse en cours…" : "Lancer l'analyse IA"}
+                {runningId === agent.id
+                  ? `Analyse en cours… ${elapsed ? `${elapsed} s` : ""}`
+                  : "Lancer l'analyse IA"}
               </button>
+              <div role="status" aria-live="polite">
+                {results[agent.id] ? (
+                  <p
+                    className={`mt-3 border-l-2 bg-surface px-3 py-2 text-sm ${
+                      results[agent.id].ok ? "border-nexus" : "border-danger"
+                    }`}
+                  >
+                    {results[agent.id].text}
+                  </p>
+                ) : null}
+              </div>
             </li>
           ))}
         </ul>
