@@ -14,7 +14,9 @@ export const DEFAULT_AGENTS_MODEL = "claude-opus-5-5";
 const MAX_ACTIONS = 3;
 
 export function getAgentsConfig() {
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim() || null;
+  // Clé saisie dans le cockpit (Réglages du serveur) prioritaire : le workflow « Installation du
+  // cockpit » ne recopie que ANTHROPIC_API_KEY et ne peut donc jamais la remplacer.
+  const apiKey = process.env.BOS_ANTHROPIC_API_KEY?.trim() || process.env.ANTHROPIC_API_KEY?.trim() || null;
   const model = process.env.BOS_AGENTS_MODEL?.trim() || DEFAULT_AGENTS_MODEL;
   return { apiKey, model, configured: Boolean(apiKey) };
 }
@@ -88,6 +90,41 @@ export async function probeClaude(): Promise<ClaudeProbe | null> {
       return { ok: false, message: `Modèle « ${model} » inconnu de l'API : vérifiez BOS_AGENTS_MODEL` };
     }
     return { ok: false, message: describeClaudeError(error)?.message ?? "API Claude injoignable" };
+  }
+}
+
+export type KeyCheck =
+  | { ok: true; organisation: string | null; cle: string | null }
+  | { ok: false; message: string; organisation: string | null; cle: string | null };
+
+/**
+ * Vérifie une clé avant de l'enregistrer : un appel minimal au modèle des agents
+ * (quelques jetons, une fraction de centime) prouve que la clé est valide ET que
+ * son organisation a du crédit, ce que la lecture de la fiche du modèle ne dit pas.
+ */
+export async function checkApiKey(apiKey: string): Promise<KeyCheck> {
+  const { model } = getAgentsConfig();
+  const cle = keyHint(apiKey);
+  try {
+    const client = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 0 });
+    const { response } = await client.messages
+      .create({
+        model,
+        max_tokens: 64,
+        output_config: { effort: "low" },
+        messages: [{ role: "user", content: "Réponds seulement : OK" }],
+      })
+      .withResponse();
+    return { ok: true, organisation: response.headers.get("anthropic-organization-id"), cle };
+  } catch (error) {
+    const organisation = error instanceof Anthropic.APIError ? organisationOf(error.headers) : null;
+    if (error instanceof Anthropic.BadRequestError && /credit balance/i.test(error.message)) {
+      return { ok: false, organisation, cle, message: "Cette clé appartient à une organisation sans crédit." };
+    }
+    if (error instanceof Anthropic.AuthenticationError) {
+      return { ok: false, organisation, cle, message: "Clé refusée par Anthropic (mal copiée, incomplète ou supprimée)." };
+    }
+    return { ok: false, organisation, cle, message: describeClaudeError(error)?.message ?? "API Anthropic injoignable." };
   }
 }
 

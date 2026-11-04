@@ -89,6 +89,17 @@ describe("Réglages du serveur saisis dans le cockpit", () => {
     assert.equal(inconnu.ok, false);
   });
 
+  it("agents IA : clé Anthropic nettoyée (copier-coller iPhone), format vérifié", () => {
+    const r = prepareReglages({ section: "ia", cleApi: "  sk-ant-api03-ABCdef_123-xyzXYZ0123456789\n" });
+    assert.deepEqual(r, {
+      ok: true,
+      section: "ia",
+      variables: { BOS_ANTHROPIC_API_KEY: "sk-ant-api03-ABCdef_123-xyzXYZ0123456789" },
+    });
+    assert.equal(prepareReglages({ section: "ia", cleApi: "" }).ok, false);
+    assert.equal(prepareReglages({ section: "ia", cleApi: "ma-cle-openai-123456789012345" }).ok, false);
+  });
+
   it("alertes et section inconnue", () => {
     assert.deepEqual(prepareReglages({ section: "alertes", alertes: " Moi@Jamaliance.com " }), {
       ok: true,

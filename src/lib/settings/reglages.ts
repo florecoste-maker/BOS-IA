@@ -9,7 +9,7 @@
 import { resolveMx } from "node:dns/promises";
 import { isEmail } from "@/lib/mail";
 
-export type Section = "base" | "emails" | "alertes";
+export type Section = "base" | "emails" | "alertes" | "ia";
 
 export interface FormulaireReglages {
   section?: unknown;
@@ -29,6 +29,8 @@ export interface FormulaireReglages {
   redirection?: unknown;
   /** Alertes : adresse qui reçoit rapports, alertes et sauvegardes. */
   alertes?: unknown;
+  /** Agents IA : clé API Anthropic (console.anthropic.com → API Keys). */
+  cleApi?: unknown;
 }
 
 export type Preparation =
@@ -132,6 +134,16 @@ export function prepareReglages(form: FormulaireReglages): Preparation {
         BOS_EMAIL_REDIRECTION: redirection,
       },
     };
+  }
+
+  if (section === "ia") {
+    // Copier-coller iPhone : espaces et retours à la ligne autour retirés.
+    const cle = secret(form.cleApi).replace(/\s+/g, "");
+    if (!cle) return { ok: false, erreur: "Collez la clé API Anthropic" };
+    if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(cle)) {
+      return { ok: false, erreur: "Ce n'est pas une clé API Anthropic : elle commence par sk-ant-api03-" };
+    }
+    return { ok: true, section, variables: { BOS_ANTHROPIC_API_KEY: cle } };
   }
 
   if (section === "alertes") {

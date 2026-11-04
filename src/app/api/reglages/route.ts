@@ -5,6 +5,7 @@ import { checkDatabase } from "@/lib/db/connection-test";
 import { writeEnvVariables } from "@/lib/env-files";
 import { getMailConfig, mailWarnings, verifyMail } from "@/lib/mail";
 import { getActor } from "@/lib/session";
+import { checkApiKey } from "@/lib/agents/claude";
 import { detecterFournisseur, prepareReglages, type FormulaireReglages } from "@/lib/settings/reglages";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +60,23 @@ export async function POST(request: Request) {
     variables.SMTP_SECURE = "";
   }
 
+  let ia: { organisation: string | null; cle: string | null } | null = null;
+  if (prep.section === "ia") {
+    const check = await checkApiKey(variables.BOS_ANTHROPIC_API_KEY);
+    if (!check.ok) {
+      await audit(actor, "reglages_refuses", "Agents IA", { request });
+      return NextResponse.json(
+        {
+          error:
+            `${check.message} Rien n'a été changé.` +
+            (check.organisation || check.cle ? ` Organisation ${check.organisation ?? "inconnue"}, clé ${check.cle ?? "?"}.` : ""),
+        },
+        { status: 422 },
+      );
+    }
+    ia = check;
+  }
+
   try {
     writeEnvVariables(variables);
   } catch (error) {
@@ -68,7 +86,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const objet = { base: "Base de données", emails: "E-mails (SMTP)", alertes: "Alertes" }[prep.section];
+  const objet = { base: "Base de données", emails: "E-mails (SMTP)", alertes: "Alertes", ia: "Agents IA" }[prep.section];
   await audit(actor, "reglages_modifies", objet, { details: { variables: Object.keys(variables).sort() }, request });
 
   const messages = {
@@ -77,6 +95,7 @@ export async function POST(request: Request) {
       ? `Connexion e-mail vérifiée et enregistrée. Mode test : tous les envois partent vers ${variables.BOS_EMAIL_REDIRECTION}.`
       : "Connexion e-mail vérifiée et enregistrée : les e-mails approuvés partent aux vrais destinataires.",
     alertes: `Adresse des alertes enregistrée : ${variables.BOS_ALERTES_EMAIL}.`,
+    ia: `Clé vérifiée auprès d'Anthropic (crédit disponible) et enregistrée sur le serveur : organisation ${ia?.organisation ?? "inconnue"}, clé ${ia?.cle ?? "?"}. Les agents l'utilisent dès maintenant.`,
   };
   return NextResponse.json({ ok: true, message: messages[prep.section] });
 }

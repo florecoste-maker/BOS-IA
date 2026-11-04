@@ -136,3 +136,22 @@ describe("Repère de la clé API (jamais la clé)", () => {
     assert.equal(keyHint(null), null);
   });
 });
+
+describe("Clé API : celle du cockpit est prioritaire", () => {
+  it("BOS_ANTHROPIC_API_KEY (cockpit) passe devant ANTHROPIC_API_KEY (recopie GitHub)", async () => {
+    const { getAgentsConfig } = await import("./claude");
+    const avant = { a: process.env.ANTHROPIC_API_KEY, b: process.env.BOS_ANTHROPIC_API_KEY };
+    try {
+      process.env.ANTHROPIC_API_KEY = "sk-ant-usr-ancienne";
+      delete process.env.BOS_ANTHROPIC_API_KEY;
+      assert.equal(getAgentsConfig().apiKey, "sk-ant-usr-ancienne");
+      process.env.BOS_ANTHROPIC_API_KEY = "sk-ant-api03-nouvelle";
+      assert.equal(getAgentsConfig().apiKey, "sk-ant-api03-nouvelle");
+    } finally {
+      for (const [k, v] of [["ANTHROPIC_API_KEY", avant.a], ["BOS_ANTHROPIC_API_KEY", avant.b]] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+});

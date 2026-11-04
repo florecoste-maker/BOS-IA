@@ -175,6 +175,38 @@ function Alertes({ defaut, onDone }: { defaut: string; onDone: () => void }) {
   );
 }
 
+function AgentsIa({ onDone }: { onDone: () => void }) {
+  const { result, pending, envoyer } = useEnvoi("ia", onDone);
+  return (
+    <form onSubmit={envoyer} className="text-sm">
+      <h4 className="font-display text-base font-semibold text-ink">4. Agents IA (clé API Anthropic)</h4>
+      <p className="mt-1 text-ink-muted">
+        Sur console.anthropic.com, dans l&apos;organisation qui a les crédits : <strong>Obtenir une clé API → Créer une
+        clé → Copier</strong>, puis collez-la ici. La clé est testée auprès d&apos;Anthropic (validité et crédit) avant
+        d&apos;être enregistrée sur le serveur ; elle n&apos;est jamais réaffichée.
+      </p>
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <label className="min-w-56 flex-1">
+          Clé API
+          <input
+            {...brut}
+            name="cleApi"
+            required
+            type="password"
+            autoComplete="off"
+            placeholder="sk-ant-api03-…"
+            className={champ}
+          />
+        </label>
+        <button type="submit" disabled={pending} className={bouton}>
+          {pending ? "Vérification…" : "Tester et enregistrer"}
+        </button>
+      </div>
+      <Message result={result} />
+    </form>
+  );
+}
+
 /**
  * Réglages du serveur pour les administrateurs : remplace la saisie de secrets
  * GitHub ou de fichiers sur Hostinger. Chaque connexion est testée avant
@@ -187,6 +219,7 @@ export function ServerSettings({ alertes = "", onSaved }: { alertes?: string; on
       <Base onDone={recharger} />
       <Emails onDone={recharger} />
       <Alertes defaut={alertes} onDone={recharger} />
+      <AgentsIa onDone={recharger} />
     </div>
   );
 }
