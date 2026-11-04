@@ -1,10 +1,12 @@
-import { NextResponse, after } from "next/server";
+import { NextResponse } from "next/server";
 import { withRecipients } from "@/lib/actions/execute";
 import { AgentRunError, runAgent } from "@/lib/agents/claude";
 import { finishJob, getJob, runningJobFor, startJob } from "@/lib/agents/jobs";
 import { audit } from "@/lib/audit";
 import { getRepository } from "@/lib/data";
 import { NO_STORE } from "@/lib/http";
+import { recordAnalyse, recordAnalyseEnd } from "@/lib/login-trace";
+import { isCronAuthorized } from "@/lib/agents/schedule";
 import { getActor } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -29,23 +31,26 @@ export async function POST(request: Request) {
   const existing = runningJobFor(agentId);
   if (existing) return json({ jobId: existing, statut: "en_cours" }, 202);
 
-  // Session lue maintenant : après la réponse, la requête n'est plus disponible.
+  // Session lue maintenant : la suite tourne après la réponse.
   const actor = await getActor();
+  const origine = isCronAuthorized(request.headers.get("authorization")) ? "surveillance" : "cockpit";
   const jobId = startJob(agentId);
-  after(async () => {
+  recordAnalyse(agentId, origine, "demarree");
+  // Serveur Node permanent (Hostinger) : la promesse continue après la réponse, sans dépendre
+  // du cycle de vie de la requête (after() n'est pas garanti derrière le relais LiteSpeed).
+  void (async () => {
     try {
       const run = await runAgent(agentId);
       finishJob(jobId, { run });
-      await audit(actor, "analyse_lancee", agentId, { details: { actions: run?.actions.length ?? 0 } });
+      recordAnalyseEnd("reussie");
+      await audit(actor, "analyse_lancee", agentId, { details: { actions: run?.actions.length ?? 0 } }).catch(() => {});
     } catch (error) {
-      if (error instanceof AgentRunError) {
-        finishJob(jobId, { erreur: error.message, code: error.status });
-      } else {
-        console.error("Exécution agent échouée", error);
-        finishJob(jobId, { erreur: "Erreur interne pendant l'analyse", code: 500 });
-      }
+      const message = error instanceof AgentRunError ? error.message : "Erreur interne pendant l'analyse";
+      if (!(error instanceof AgentRunError)) console.error("Exécution agent échouée", error);
+      finishJob(jobId, { erreur: message, code: error instanceof AgentRunError ? error.status : 500 });
+      recordAnalyseEnd(`echec : ${message}`);
     }
-  });
+  })();
   return json({ jobId, statut: "en_cours" }, 202);
 }
 

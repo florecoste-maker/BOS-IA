@@ -112,11 +112,21 @@ export function AgentsClient({
     const POLL_MS = 2500;
     const MAX_POLLS = (6 * 60 * 1000) / POLL_MS; // 6 minutes au plus
     try {
-      const res = await fetch("/api/agents/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId }),
-      });
+      const lancer = () =>
+        fetch("/api/agents/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agentId }),
+          cache: "no-store",
+        });
+      let res: Response;
+      try {
+        res = await lancer();
+      } catch {
+        // Coupure passagère (réseau mobile, redémarrage du serveur) : un second essai après 3 s.
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        res = await lancer();
+      }
       const start = await readJson(res);
       if (!res.ok || typeof start.jobId !== "string") {
         show(false, String(start.error ?? `Erreur HTTP ${res.status}`));
@@ -153,8 +163,12 @@ export function AgentsClient({
         return;
       }
       show(false, "L'analyse dure plus de 6 minutes : consultez « Exécutions » plus bas dans un moment.");
-    } catch {
-      show(false, "Connexion au serveur impossible. Vérifiez la connexion internet et réessayez.");
+    } catch (error) {
+      const detail = error instanceof Error ? `${error.name} : ${error.message}` : String(error);
+      show(
+        false,
+        `Connexion au serveur impossible (deux essais). Vérifiez la connexion internet puis réessayez. Détail technique : ${detail}`,
+      );
     } finally {
       setRunningId(null);
     }

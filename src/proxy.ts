@@ -5,6 +5,7 @@ import { NO_STORE } from "@/lib/http";
 import { recordReturn } from "@/lib/login-trace";
 import { retryPersistentEnv } from "@/lib/env-files";
 import { resolveActor } from "@/lib/session";
+import { isCronAuthorized } from "@/lib/agents/schedule";
 
 /**
  * Routes ouvertes sans session : connexion, sonde de santé Hostinger, et
@@ -32,6 +33,11 @@ export async function proxy(request: NextRequest) {
   // bos-ia.env créé ou complété après le démarrage : pris en compte sans redémarrer.
   retryPersistentEnv();
   if (PUBLIC_API.includes(pathname)) return NextResponse.next();
+  // Test « test_ia » du workflow Surveillance : même parcours que le bouton du cockpit,
+  // autorisé par BOS_CRON_SECRET (qui permet déjà de lancer les agents planifiés).
+  if (pathname === "/api/agents/run" && isCronAuthorized(request.headers.get("authorization"))) {
+    return NextResponse.next();
+  }
 
   const isApi = pathname.startsWith("/api/");
   const auth = getAuthConfig();

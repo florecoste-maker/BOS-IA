@@ -66,15 +66,28 @@ jobs:
             exit 0
           fi
           if [ "$TACHE" = "test_ia" ]; then
-            status=$(curl -sS -o reponse.json -w "%{http_code}" --max-time 90 \
-              -H "Authorization: Bearer $BOS_CRON_SECRET" "$BOS_APP_URL/api/health?complet=1&test_ia=1")
-            cat reponse.json; echo
+            # Même parcours que le bouton « Lancer l'analyse IA » : lancement (202), puis suivi du résultat.
+            auth="Authorization: Bearer $BOS_CRON_SECRET"
+            status=$(curl -sS -o depart.json -w "%{http_code}" --max-time 30 -X POST -H "$auth" \
+              -H "Content-Type: application/json" -d '{"agentId":"agt-001"}' "$BOS_APP_URL/api/agents/run" || echo "000")
+            echo "Lancement : HTTP $status $(cat depart.json 2>/dev/null)"
             [ "$status" = "401" ] && { echo "::error::Secret refusé : BOS_CRON_SECRET n'a pas la même valeur dans GitHub et sur le serveur"; exit 1; }
-            if jq -e '.test_ia.ok == true' reponse.json >/dev/null 2>&1; then
-              echo "::notice::Analyse IA réelle réussie : $(jq -r '.test_ia | "\(.agent), \(.modele), \(.actions) action(s), \(.duree_s) s"' reponse.json)"
-              exit 0
-            fi
-            echo "::error::Analyse IA : $(jq -r '.test_ia.message // "réponse inattendue (HTTP '"$status"')"' reponse.json 2>/dev/null)"
+            [ "$status" = "202" ] || { echo "::error::Le lancement de l'analyse a échoué (HTTP $status) : le bouton du cockpit échouerait de la même façon"; exit 1; }
+            id=$(jq -r .jobId depart.json)
+            for i in $(seq 1 60); do
+              sleep 3
+              curl -sS -o suivi.json --max-time 30 -H "$auth" "$BOS_APP_URL/api/agents/run?id=$id" || continue
+              etat=$(jq -r '.statut // "inconnu"' suivi.json)
+              [ "$etat" = "en_cours" ] && continue
+              jq '{statut, error, modele: .run.model, actions: (.run.actions | length?), resume: .run.resume}' suivi.json
+              if [ "$etat" = "succes" ]; then
+                echo "::notice::Analyse IA réelle réussie en $((i*3)) s : $(jq -r '"\(.run.model), \(.run.actions | length) action(s)"' suivi.json)"
+                exit 0
+              fi
+              echo "::error::Analyse IA : $(jq -r '.error // "état inattendu"' suivi.json)"
+              exit 1
+            done
+            echo "::error::Analyse IA toujours en cours après 3 minutes"
             exit 1
           fi
           if [ "$TACHE" = "sauvegarde" ]; then
