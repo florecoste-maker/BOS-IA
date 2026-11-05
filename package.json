@@ -31,12 +31,14 @@
   "devDependencies": {
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
+    "minimatch": "file:vendor/minimatch-compat",
     "tsx": "^4.20.5"
   },
   "engines": {
     "node": ">=20.9.0"
   },
   "overrides": {
+    "minimatch@<4": "$minimatch",
     "@typescript-eslint/typescript-estree": {
       "minimatch": "^11.0.4"
     }

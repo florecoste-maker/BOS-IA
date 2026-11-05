@@ -1,0 +1,10 @@
+{
+  "name": "minimatch",
+  "version": "11.0.4",
+  "description": "Compatibilité : minimatch 11.0.4 (corrigé) exposé avec l'interface de minimatch 3 (fonction appelable + default), pour les outils ESLint qui l'appellent encore ainsi.",
+  "main": "index.js",
+  "license": "ISC",
+  "dependencies": {
+    "minimatch-v11": "npm:minimatch@11.0.4"
+  }
+}
