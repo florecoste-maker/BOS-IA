@@ -8,7 +8,7 @@ import { probeClaude } from "@/lib/agents/claude";
 import { getScheduleConfig } from "@/lib/agents/schedule";
 import { getAlertAddress } from "@/lib/alerts";
 import { getRepository } from "@/lib/data";
-import { isDatabaseConfigured } from "@/lib/db/config";
+import { getDatabaseEngine, getSqlitePath, isDatabaseConfigured } from "@/lib/db/config";
 import { getMailConfig, verifyMail } from "@/lib/mail";
 
 export type CheckStatus = "ok" | "attention" | "erreur";
@@ -34,7 +34,11 @@ export async function runHealthChecks(now = Date.now()): Promise<{ ok: boolean; 
     checks.push({
       nom: "Base de données",
       statut: probe.ok ? "ok" : "erreur",
-      message: probe.ok ? "Connectée" : probe.message,
+      message: probe.ok
+        ? getDatabaseEngine() === "sqlite"
+          ? `SQLite intégré : ${getSqlitePath()}`
+          : "Connectée"
+        : probe.message,
     });
   }
 
