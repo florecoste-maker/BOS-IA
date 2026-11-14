@@ -3,6 +3,8 @@
  * Lue à l'exécution : ajouter les variables dans hPanel puis redémarrer suffit.
  * Sans configuration, le cockpit reste en mode démonstration (données en mémoire).
  */
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 export interface DatabaseConfig {
   host: string;
@@ -57,6 +59,26 @@ export function getDatabaseConfig(env: Env = process.env): DatabaseConfig | null
   };
 }
 
+export type DatabaseEngine = "sqlite" | "mysql";
+
+/**
+ * Moteur choisi : `BOS_DB_ENGINE=sqlite` dans hPanel → base SQLite intégrée
+ * (un fichier sur le serveur, sans mot de passe), prioritaire sur MySQL.
+ * Sinon MySQL dès que ses variables sont présentes, sinon démonstration.
+ */
+export function getDatabaseEngine(env: Env = process.env): DatabaseEngine | null {
+  if (readEnv("BOS_DB_ENGINE", env)?.toLowerCase() === "sqlite") return "sqlite";
+  return getDatabaseConfig(env) ? "mysql" : null;
+}
+
+/**
+ * Emplacement du fichier SQLite : `BOS_SQLITE_PATH`, sinon `~/bos-data/bos-ia.sqlite`,
+ * c'est-à-dire HORS du dossier de l'application, qu'un redéploiement remplace.
+ */
+export function getSqlitePath(env: Env = process.env): string {
+  return readEnv("BOS_SQLITE_PATH", env) ?? join(homedir(), "bos-data", "bos-ia.sqlite");
+}
+
 export function isDatabaseConfigured() {
-  return getDatabaseConfig() !== null;
+  return getDatabaseEngine() !== null;
 }

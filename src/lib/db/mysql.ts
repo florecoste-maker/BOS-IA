@@ -1,11 +1,11 @@
 /**
- * Moteur MySQL / MariaDB du cockpit BOS-IA.
+ * Moteur MySQL / MariaDB (ou SQLite intégré, voir ./sqlite) du cockpit BOS-IA.
  * Les tables (préfixe `bos_`) sont créées au premier accès ; seuls les 6 agents
  * sont insérés : aucune donnée métier fictive. Clients, missions, factures et
  * paiements sont saisis dans le cockpit (ou importés).
  */
 import { randomUUID } from "node:crypto";
-import mysql, { type Pool, type PoolConnection, type RowDataPacket } from "mysql2/promise";
+import mysql, { type Pool, type PoolConnection, type ResultSetHeader, type RowDataPacket } from "mysql2/promise";
 import { computeMetrics } from "@/lib/metrics";
 import { editedOperation } from "@/lib/actions/operations";
 import { STALE_EXECUTION_MS, cleanEdits } from "@/lib/actions/rules";
@@ -46,7 +46,8 @@ import type {
   User,
 } from "@/lib/types";
 import type { Repository } from "@/lib/data";
-import { getDatabaseConfig, type DatabaseConfig } from "./config";
+import { getDatabaseConfig, getDatabaseEngine, getSqlitePath, type DatabaseConfig } from "./config";
+import { SqlitePool, openSqlite, sqliteType, translateSchema } from "./sqlite";
 
 export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS bos_clients (
@@ -214,6 +215,15 @@ export const MIGRATIONS: Array<{ table: string; column: string; ddl: string }> =
 ];
 
 async function migrate(pool: Pool) {
+  if (isSqlite(pool)) {
+    for (const m of MIGRATIONS) {
+      const [cols] = await pool.query<RowDataPacket[]>(`PRAGMA table_info(${m.table})`);
+      if (!cols.some((c) => c.name === m.column)) {
+        await pool.query(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${sqliteType(m.ddl)}`);
+      }
+    }
+    return;
+  }
   const [rows] = await pool.query<RowDataPacket[]>(
     "SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'bos\\_%'",
   );
@@ -239,8 +249,13 @@ function configKey(c: DatabaseConfig) {
   return `${c.user}@${c.host}:${c.port}/${c.database}`;
 }
 
+/** Le « pool » SQLite imite mysql2 ; on le reconnaît pour les quelques écarts de syntaxe. */
+function isSqlite(pool: unknown): boolean {
+  return pool instanceof SqlitePool;
+}
+
 async function prepare(pool: Pool) {
-  for (const statement of SCHEMA) await pool.query(statement);
+  for (const statement of isSqlite(pool) ? translateSchema(SCHEMA) : SCHEMA) await pool.query(statement);
   await migrate(pool);
   const [rows] = await pool.query<RowDataPacket[]>("SELECT COUNT(*) AS n FROM bos_agents");
   if (Number(rows[0].n) === 0) {
@@ -265,21 +280,25 @@ async function prepare(pool: Pool) {
 
 /** Pool partagé ; schéma vérifié une fois par processus (et réessayé après un échec). */
 async function db(): Promise<Pool> {
-  const config = getDatabaseConfig();
-  if (!config) throw new Error("Base de données non configurée");
-  const key = configKey(config);
+  const engine = getDatabaseEngine();
+  const config = engine === "mysql" ? getDatabaseConfig() : null;
+  if (!engine || (engine === "mysql" && !config)) throw new Error("Base de données non configurée");
+  const key = engine === "sqlite" ? `sqlite:${getSqlitePath()}` : configKey(config!);
 
   let state = globalForDb.__bosDb;
   if (!state || state.key !== key) {
     if (state) void state.pool.end().catch(() => {});
-    const pool = mysql.createPool({
-      ...config,
-      charset: "utf8mb4",
-      timezone: "Z",
-      dateStrings: true,
-      connectionLimit: 5,
-      connectTimeout: 10_000,
-    });
+    const pool =
+      engine === "sqlite"
+        ? (openSqlite(getSqlitePath()) as unknown as Pool)
+        : mysql.createPool({
+            ...config!,
+            charset: "utf8mb4",
+            timezone: "Z",
+            dateStrings: true,
+            connectionLimit: 5,
+            connectTimeout: 10_000,
+          });
     state = { key, pool, ready: prepare(pool) };
     globalForDb.__bosDb = state;
   }
@@ -297,7 +316,11 @@ async function db(): Promise<Pool> {
 }
 
 export async function transaction<T>(work: (conn: PoolConnection) => Promise<T>): Promise<T> {
-  const conn = await (await db()).getConnection();
+  const pool = await db();
+  if (isSqlite(pool)) {
+    return (pool as unknown as SqlitePool).transaction((conn) => work(conn as unknown as PoolConnection));
+  }
+  const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const result = await work(conn);
@@ -318,6 +341,9 @@ export async function probeDatabase(): Promise<{ ok: true } | { ok: false; messa
     return { ok: true };
   } catch (error) {
     const code = (error as { code?: string }).code;
+    if (getDatabaseEngine() === "sqlite") {
+      return { ok: false, message: `SQLite : ${(error as Error).message ?? "ouverture impossible"}` };
+    }
     return { ok: false, message: code ? `Connexion refusée (${code})` : "Connexion impossible" };
   }
 }
@@ -1289,7 +1315,9 @@ export const mysqlRepository: Repository = {
 
   /** Verrou MySQL nommé (GET_LOCK), tenu sur une connexion dédiée le temps du travail. */
   async withLock(name, work) {
-    const conn = await (await db()).getConnection();
+    const pool = await db();
+    if (isSqlite(pool)) return withSqliteLock(pool, name, work);
+    const conn = await pool.getConnection();
     try {
       const [rows] = await conn.query<Row[]>("SELECT GET_LOCK(?, 0) AS ok", [`bos:${name}`]);
       if (Number(rows[0].ok) !== 1) return null;
@@ -1303,3 +1331,24 @@ export const mysqlRepository: Repository = {
     }
   },
 };
+
+/**
+ * Équivalent SQLite de GET_LOCK : une ligne dans bos_verrous, valable entre
+ * processus. Un verrou de plus d'une heure (processus arrêté net) est repris.
+ */
+async function withSqliteLock<T>(pool: Pool, name: string, work: () => Promise<T>): Promise<{ value: T } | null> {
+  const key = `bos:${name}`;
+  const now = Date.now();
+  await pool.query("CREATE TABLE IF NOT EXISTS bos_verrous (nom TEXT PRIMARY KEY, pris_le INTEGER NOT NULL)");
+  await pool.query("DELETE FROM bos_verrous WHERE nom = ? AND pris_le < ?", [key, now - 3_600_000]);
+  const [taken] = await pool.query<ResultSetHeader>("INSERT OR IGNORE INTO bos_verrous (nom, pris_le) VALUES (?, ?)", [
+    key,
+    now,
+  ]);
+  if (!taken.affectedRows) return null;
+  try {
+    return { value: await work() };
+  } finally {
+    await pool.query("DELETE FROM bos_verrous WHERE nom = ? AND pris_le = ?", [key, now]).catch(() => {});
+  }
+}

@@ -4,7 +4,7 @@ import { MIN_CRON_SECRET_LENGTH, getScheduleConfig } from "@/lib/agents/schedule
 import { getRepository } from "@/lib/data";
 import { getMailConfig, mailWarnings, verifyMail } from "@/lib/mail";
 import { getAlertAddress } from "@/lib/alerts";
-import { isDatabaseConfigured } from "@/lib/db/config";
+import { getDatabaseEngine, getSqlitePath, isDatabaseConfigured } from "@/lib/db/config";
 import { getIntegrationsOverview } from "@/lib/integrations/config";
 import { probeTidyCalConnection } from "@/lib/integrations/tidycal";
 
@@ -40,7 +40,9 @@ export async function GET(request: NextRequest) {
       message: !dbProbe
         ? "Mode démonstration : données fictives en mémoire"
         : dbProbe.ok
-          ? "MySQL connecté : données persistantes"
+          ? getDatabaseEngine() === "sqlite"
+            ? `SQLite intégré : données persistantes (${getSqlitePath()})`
+            : "MySQL connecté : données persistantes"
           : dbProbe.message,
       needsFromUser: !dbProbe
         ? [
