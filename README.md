@@ -315,7 +315,7 @@ formules Excel).
 ## Sécurité
 
 - `src/proxy.ts` protège `/app/*` et `/api/*` ; seules `/api/health`,
-  `/api/auth/*`, `/api/agents/planifie` et `/api/sauvegarde` (protégées par leur
+  `/api/auth/*`, `/api/agents/planifie`, `/api/sauvegarde` et `/api/sauvegarde/locale` (protégées par leur
   propre secret) sont publiques. Session signée HMAC-SHA256, cookie `httpOnly`,
   `secure`, `SameSite=Lax`, 12 h. 5 échecs de connexion par IP → blocage 15 min.
 - En-têtes HSTS, `X-Frame-Options: DENY`, `nosniff`, `noindex` sur tout le moteur.
@@ -409,6 +409,43 @@ l'e-mail associé n'est pas envoyé. Chaque application est inscrite au journal.
 
 ## Sauvegardes et alertes
 
+### Copie quotidienne de la base (SQLite, sur Hostinger)
+
+| | |
+|---|---|
+| Base en service | `~/bos-data/bos-ia.sqlite` (plus `-wal` et `-shm` à côté) |
+| Copies | `~/bos-data/sauvegardes/bos-ia-AAAA-MM-JJ.sqlite` |
+| Fréquence | 1 par jour (workflow « Surveillance » à 05:43 UTC, et le serveur lui-même 1 min après chaque démarrage puis toutes les 6 h) |
+| Conservation | les 30 dernières copies + la première de chacun des 12 derniers mois |
+| Vérification | chaque copie est rouverte : contrôle d'intégrité SQLite et nombre de fiches par table |
+
+`~` = la racine du compte Hostinger (`/home/u…`), au-dessus de `domains/`. Les
+deux dossiers sont **hors du dossier de l'application** : un redéploiement
+depuis GitHub ne les touche pas. Autre emplacement possible : `BOS_SQLITE_PATH`
+(base) et `BOS_SAUVEGARDES_DIR` (copies). La copie (`VACUUM INTO`) ne modifie
+jamais la base en service ; une copie ratée ne remplace pas la précédente.
+Seuls les fichiers `bos-ia-AAAA-MM-JJ.sqlite` du dossier `sauvegardes` sont
+retirés par la conservation.
+
+Contrôle : `POST /api/sauvegarde/locale` (secret `BOS_CRON_SECRET`) renvoie
+l'emplacement, la taille, l'intégrité et le nombre de fiches ; le bilan de santé
+(`/api/health?complet=1`) affiche la ligne « Sauvegardes ». Pour refaire la copie
+du jour : Actions → Surveillance → Run workflow → tâche `copie`.
+
+**Restaurer une copie** (hPanel) :
+1. Sites web → app.jamaliance.com → Node.js : **Arrêter** l'application.
+2. Gestionnaire de fichiers → dossier `bos-data` : renommer `bos-ia.sqlite`
+   en `bos-ia.sqlite.avant-restauration-AAAA-MM-JJ`, et de même `bos-ia.sqlite-wal`
+   et `bos-ia.sqlite-shm` s'ils existent (on ne supprime rien).
+3. Copier la copie choisie depuis `bos-data/sauvegardes/` dans `bos-data/`,
+   et la renommer `bos-ia.sqlite`.
+4. **Redémarrer** l'application, se connecter, vérifier les données.
+Pour revenir en arrière : même procédure avec le fichier `avant-restauration`.
+Une copie est un fichier unique et complet : elle peut aussi être téléchargée
+depuis le gestionnaire de fichiers pour être gardée hors de Hostinger.
+
+### Exports, alertes et surveillance
+
 **Exports** (`/app/import` → « Exporter et sauvegarder », session requise) :
 sauvegarde complète JSON, et un CSV par type **au format exact de l'import**.
 Restauration : réimporter ces CSV dans l'ordre clients → missions → factures →
@@ -421,11 +458,12 @@ paiements (tests automatiques : chaque export se relit sans erreur à l'import).
 - chaque dimanche, la sauvegarde complète en pièce jointe (`.json.gz`).
 
 **Surveillance** — workflow GitHub « Surveillance » (même secret `BOS_CRON_SECRET`) :
-bilan de santé quotidien `GET /api/health?complet=1` (base, Claude, SMTP,
-dernier passage planifié, alertes) et sauvegarde hebdomadaire `POST /api/sauvegarde`.
+copie quotidienne de la base `POST /api/sauvegarde/locale`, bilan de santé quotidien
+`GET /api/health?complet=1` (base, sauvegardes, Claude, SMTP, dernier passage planifié,
+alertes) et sauvegarde hebdomadaire par e-mail `POST /api/sauvegarde`.
 Un service en erreur fait échouer le workflow et **GitHub prévient le propriétaire
 du dépôt par e-mail** — y compris quand le site ne peut plus rien envoyer.
-Même sans secret, le workflow vérifie la sonde publique `GET /api/health` : le
+Sans le secret, le workflow échoue (aucune copie ni bilan) mais vérifie quand même la sonde publique `GET /api/health` : le
 site répond et c'est bien BOS-IA (et non une page Hostinger par défaut). Un secret
 de valeur différente de hPanel est signalé (« Secret refusé »). Lancement à la
 main : onglet Actions → Surveillance → Run workflow.
@@ -472,6 +510,7 @@ Mise en place :
 - `POST /api/agents/planifie` — déclencheur des agents planifiés (secret `BOS_CRON_SECRET`)
 - `GET /api/health?complet=1` — bilan de santé (secret `BOS_CRON_SECRET`)
 - `POST /api/sauvegarde` — sauvegarde par e-mail (secret `BOS_CRON_SECRET`)
+- `POST /api/sauvegarde/locale` — copie quotidienne de la base SQLite (secret `BOS_CRON_SECRET`)
 - `GET /api/export?format=json|csv&type=…` — exports (session)
 - `GET /api/integrations/status` — état Hostinger / TidyCal / agents IA (+ sonde live API)
 - `GET /api/integrations/tidycal?view=public|bookings|types|timeslots`
