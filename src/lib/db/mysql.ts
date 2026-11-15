@@ -348,6 +348,16 @@ export async function probeDatabase(): Promise<{ ok: true } | { ok: false; messa
   }
 }
 
+/**
+ * Copie cohérente de la base SQLite vers `target` (`VACUUM INTO`) : lecture seule pour la
+ * base en service, attend la fin d'une éventuelle transaction, n'écrit que le nouveau fichier.
+ */
+export async function sqliteSnapshot(target: string): Promise<void> {
+  const pool = await db();
+  if (!isSqlite(pool)) throw new Error("Copie de fichier réservée à la base intégrée SQLite");
+  await pool.query("VACUUM INTO ?", [target]);
+}
+
 /* ---------- conversions ---------- */
 
 /** ISO 8601 → DATETIME(3) UTC. */

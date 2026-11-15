@@ -9,6 +9,7 @@ import { getScheduleConfig } from "@/lib/agents/schedule";
 import { getAlertAddress } from "@/lib/alerts";
 import { getRepository } from "@/lib/data";
 import { getDatabaseEngine, getSqlitePath, isDatabaseConfigured } from "@/lib/db/config";
+import { AGE_MAX_HEURES, backupStatus } from "@/lib/db/sauvegardes";
 import { getMailConfig, verifyMail } from "@/lib/mail";
 
 export type CheckStatus = "ok" | "attention" | "erreur";
@@ -40,6 +41,21 @@ export async function runHealthChecks(now = Date.now()): Promise<{ ok: boolean; 
           : "Connectée"
         : probe.message,
     });
+  }
+
+  if (getDatabaseEngine() === "sqlite") {
+    const s = backupStatus(now);
+    checks.push(
+      !s.derniere
+        ? { nom: "Sauvegardes", statut: "attention", message: `Aucune copie encore dans ${s.dossier}` }
+        : {
+            nom: "Sauvegardes",
+            statut: s.ageHeures! <= AGE_MAX_HEURES ? "ok" : "attention",
+            message:
+              `${s.nombre} copie(s) dans ${s.dossier} ; la plus récente : ${s.derniere.jour}` +
+              ` (${Math.round(s.derniere.octets / 1024)} Ko, il y a ${Math.floor(s.ageHeures!)} h)`,
+          },
+    );
   }
 
   const claude = await probeClaude();

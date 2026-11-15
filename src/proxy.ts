@@ -15,6 +15,7 @@ const PUBLIC_API = [
   "/api/health",
   "/api/agents/planifie",
   "/api/sauvegarde",
+  "/api/sauvegarde/locale",
   "/api/installation",
   "/api/installation/terminer",
 ];
